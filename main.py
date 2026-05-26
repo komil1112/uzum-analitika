@@ -2,13 +2,13 @@
 import os
 import threading
 
-from app import app
+from app import app, start_background_refresher
 from bot import start_polling
 
 if __name__ == "__main__":
-    # Bot alohida threadda ishlaydi
-    t = threading.Thread(target=start_polling, daemon=True)
-    t.start()
+    # Bot va background refresher alohida threadlarda ishlaydi
+    threading.Thread(target=start_polling, daemon=True).start()
+    start_background_refresher(6)
 
     port = int(os.environ.get("PORT", 8080))
     print(f"🚀 Flask server: http://0.0.0.0:{port}")

@@ -66,12 +66,42 @@ def init_db():
       taken_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_product ON snapshots(product_id, taken_at);
+
+    CREATE TABLE IF NOT EXISTS tracked_products (
+      product_id INTEGER PRIMARY KEY,
+      title TEXT,
+      photo TEXT,
+      added_at TEXT,
+      last_refreshed TEXT
+    );
     """)
     con.commit()
     con.close()
 
 
 init_db()
+
+
+def add_tracking(p):
+    """Mahsulotni avtomatik kuzatuvga qo'shadi (upsert)."""
+    if not p or not p.get("id"):
+        return
+    now = datetime.utcnow().isoformat()
+    photo = ""
+    if p.get("photos"):
+        photo = (p["photos"][0] or {}).get("link", {}).get("high", "")
+    con = sqlite3.connect(DB_PATH)
+    con.execute(
+        """INSERT INTO tracked_products (product_id, title, photo, added_at, last_refreshed)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(product_id) DO UPDATE SET
+             title=excluded.title,
+             photo=excluded.photo,
+             last_refreshed=excluded.last_refreshed""",
+        (p.get("id"), p.get("title"), photo, now, now),
+    )
+    con.commit()
+    con.close()
 
 
 # ----- Helpers -----
@@ -170,8 +200,9 @@ def product(pid):
             by_color[color]["stock"] += v["stock"]
             by_color[color]["variants"] += 1
 
-    # Snapshot saqlash (tarix uchun)
+    # Snapshot saqlash + avtomatik kuzatuvga qo'shish
     store_snapshot(p)
+    add_tracking(p)
 
     # Tarix (oldingi snapshot bilan farq)
     con = sqlite3.connect(DB_PATH)
@@ -218,6 +249,7 @@ def products_batch():
             if not p:
                 continue
             store_snapshot(p)
+            add_tracking(p)
             chars = p.get("characteristics", [])
             stock_by_color = {}
             for sku in p.get("skuList", []):
@@ -243,7 +275,112 @@ def products_batch():
     return jsonify({"products": results})
 
 
+@app.route("/api/tracked")
+def list_tracked():
+    """Kuzatilayotgan barcha mahsulotlar va davriy sotuv farqi."""
+    con = sqlite3.connect(DB_PATH)
+    tracked = con.execute(
+        "SELECT product_id, title, photo, added_at, last_refreshed FROM tracked_products ORDER BY last_refreshed DESC"
+    ).fetchall()
+
+    products = []
+    for pid, title, photo, added_at, last_refreshed in tracked:
+        # Eng oxirgi snapshot
+        latest = con.execute(
+            "SELECT orders_amount, total_stock, taken_at FROM snapshots WHERE product_id=? ORDER BY taken_at DESC LIMIT 1",
+            (pid,),
+        ).fetchone()
+        if not latest:
+            continue
+        orders_now, stock_now, last_seen = latest
+
+        # N kun oldingi snapshot
+        def orders_at(days_ago):
+            row = con.execute(
+                "SELECT orders_amount FROM snapshots WHERE product_id=? AND datetime(taken_at) <= datetime('now', ?) ORDER BY taken_at DESC LIMIT 1",
+                (pid, f"-{days_ago} days"),
+            ).fetchone()
+            return row[0] if row else None
+
+        o_1d = orders_at(1)
+        o_7d = orders_at(7)
+        o_30d = orders_at(30)
+
+        products.append({
+            "id": pid,
+            "title": title,
+            "photo": photo,
+            "addedAt": added_at,
+            "lastSeen": last_seen,
+            "ordersNow": orders_now,
+            "stockNow": stock_now,
+            "today": (orders_now - o_1d) if o_1d is not None else None,
+            "last7d": (orders_now - o_7d) if o_7d is not None else None,
+            "last30d": (orders_now - o_30d) if o_30d is not None else None,
+        })
+
+    con.close()
+    products.sort(key=lambda x: (x.get("today") or 0), reverse=True)
+    return jsonify({"products": products, "count": len(products)})
+
+
+@app.route("/api/untrack/<int:pid>", methods=["DELETE"])
+def untrack(pid):
+    con = sqlite3.connect(DB_PATH)
+    con.execute("DELETE FROM tracked_products WHERE product_id=?", (pid,))
+    con.commit()
+    con.close()
+    return jsonify({"ok": True})
+
+
+def refresh_all_tracked():
+    """Barcha kuzatilayotgan mahsulotlarni Uzum API dan yangilaydi."""
+    con = sqlite3.connect(DB_PATH)
+    ids = [r[0] for r in con.execute("SELECT product_id FROM tracked_products").fetchall()]
+    con.close()
+
+    print(f"🔄 Avto-yangilash: {len(ids)} ta mahsulot")
+    refreshed = 0
+    for pid in ids:
+        try:
+            p = fetch_product(pid)
+            if p:
+                store_snapshot(p)
+                add_tracking(p)
+                refreshed += 1
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"  ❌ {pid}: {e}")
+    print(f"✅ Yangilandi: {refreshed}/{len(ids)}")
+    return refreshed
+
+
+@app.route("/api/refresh", methods=["POST"])
+def refresh_endpoint():
+    n = refresh_all_tracked()
+    return jsonify({"refreshed": n})
+
+
+def start_background_refresher(interval_hours=6):
+    """Fon rejimida har N soatda kuzatilayotgan mahsulotlarni yangilaydi."""
+    import threading
+
+    def loop():
+        time.sleep(60)  # startup dan keyin 1 daqiqa kutib turish
+        while True:
+            try:
+                refresh_all_tracked()
+            except Exception as e:
+                print(f"Background refresh error: {e}")
+            time.sleep(interval_hours * 3600)
+
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+    print(f"⏰ Background refresher har {interval_hours} soatda ishlaydi")
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
+    start_background_refresher(6)
     print(f"🚀 Uzum Analitika serveri http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)
