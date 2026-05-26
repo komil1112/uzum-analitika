@@ -2,256 +2,506 @@
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Uzum Analitika</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
-  .header { background: linear-gradient(135deg, #6c63ff, #3b82f6); padding: 20px 32px; color: white; }
-  .header h1 { font-size: 22px; font-weight: 700; }
-  .header p { font-size: 13px; opacity: 0.85; margin-top: 3px; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
-  .tabs { display: flex; gap: 4px; background: white; border-radius: 10px; padding: 4px; margin-bottom: 16px; }
-  .tab { flex: 1; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
-  .tab.active { background: #6c63ff; color: white; }
-  .card { background: white; border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; }
-  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
-  .step { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; margin-bottom: 6px; }
-  .step-num { background: #6c63ff; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
-  .code-wrap { position: relative; margin: 10px 0; }
-  .code-block { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 11px; overflow-x: auto; white-space: pre; line-height: 1.5; }
-  .copy-btn { position: absolute; top: 6px; right: 6px; background: #6c63ff; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
-  textarea { width: 100%; height: 80px; border: 2px solid #e2e8f0; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; resize: vertical; }
-  textarea:focus { outline: none; border-color: #6c63ff; }
-  input[type=text], input[type=number] { width: 100%; border: 2px solid #e2e8f0; border-radius: 8px; padding: 10px; font-size: 14px; }
-  input[type=text]:focus, input[type=number]:focus { outline: none; border-color: #6c63ff; }
-  .btn { background: #6c63ff; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
-  .btn:hover { background: #5b52e0; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 16px; }
-  .stat-card { background: white; border-radius: 12px; padding: 16px; text-align: center; }
-  .stat-card .value { font-size: 22px; font-weight: 700; color: #6c63ff; }
-  .stat-card .label { font-size: 12px; color: #64748b; margin-top: 2px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { background: #f8fafc; padding: 9px 10px; text-align: left; font-weight: 600; color: #64748b; border-bottom: 2px solid #e2e8f0; font-size: 12px; }
-  td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; }
-  tr:hover td { background: #fafbfc; }
-  .rank { font-weight: 700; color: #6c63ff; }
-  .product-img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; background: #f1f5f9; }
-  .product-link { color: #1a1a2e; text-decoration: none; font-weight: 500; }
-  .product-link:hover { color: #6c63ff; }
-  .badge { background: #f0f0ff; color: #6c63ff; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .color-pill { display: inline-block; padding: 3px 10px; background: #f1f5f9; border-radius: 12px; font-size: 11px; margin: 2px; }
-  .color-pill b { color: #6c63ff; margin-left: 4px; }
-  .loader { text-align: center; padding: 30px; color: #6c63ff; font-weight: 600; }
-  .err { background: #fef2f2; color: #b91c1c; padding: 10px 14px; border-radius: 8px; font-size: 13px; }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-  .progress { height: 4px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 10px; }
-  .progress-bar { height: 100%; background: linear-gradient(90deg, #6c63ff, #3b82f6); transition: width 0.3s; }
+:root {
+  --bg:   var(--tg-theme-bg-color,           #ffffff);
+  --bg2:  var(--tg-theme-secondary-bg-color, #f0f2f5);
+  --text: var(--tg-theme-text-color,         #000000);
+  --hint: var(--tg-theme-hint-color,         #999999);
+  --link: var(--tg-theme-link-color,         #2678b6);
+  --btn:  var(--tg-theme-button-color,       #2678b6);
+  --btnt: var(--tg-theme-button-text-color,  #ffffff);
+  --div:  rgba(0,0,0,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg2);
+  color: var(--text);
+  font-size: 15px;
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  overscroll-behavior: none;
+}
+
+/* ── Bottom Nav ── */
+.bnav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--div);
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 100;
+}
+.bnav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 8px 4px 6px; cursor: pointer;
+  color: var(--hint); font-size: 10px; font-weight: 500;
+  transition: color .15s;
+}
+.bnav-item.active { color: var(--btn); }
+.bnav-item .ico { font-size: 22px; line-height: 1; }
+
+/* ── Pages ── */
+.page { display: none; animation: fadein .15s ease; }
+.page.active { display: block; }
+@keyframes fadein { from { opacity: .4 } to { opacity: 1 } }
+
+/* ── Section headers ── */
+.sh {
+  padding: 18px 16px 6px;
+  font-size: 12px; font-weight: 600; color: var(--hint);
+  text-transform: uppercase; letter-spacing: .5px;
+}
+
+/* ── Card list ── */
+.section {
+  background: var(--bg); border-radius: 12px;
+  margin: 0 12px 12px; overflow: hidden;
+}
+.row {
+  display: flex; align-items: center;
+  padding: 12px 16px; gap: 12px;
+  border-bottom: 1px solid var(--div);
+  cursor: pointer;
+}
+.row:last-child { border-bottom: none; }
+.row:active { background: var(--bg2); }
+.thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: var(--bg2); flex-shrink: 0; }
+.row-body { flex: 1; min-width: 0; }
+.row-title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { color: var(--hint); font-size: 12px; margin-top: 2px; }
+.row-right { text-align: right; flex-shrink: 0; }
+.row-val { font-size: 15px; font-weight: 700; }
+.row-lbl { color: var(--hint); font-size: 11px; margin-top: 1px; }
+
+/* ── Stat grid 2-col ── */
+.sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px 12px; }
+.sbox { background: var(--bg); border-radius: 12px; padding: 14px 16px; }
+.sbox .val { font-size: 22px; font-weight: 700; color: var(--btn); }
+.sbox .lbl { font-size: 12px; color: var(--hint); margin-top: 2px; }
+.sbox.green .val { color: #34c759; }
+.sbox.red   .val { color: #ff3b30; }
+
+/* ── Buttons ── */
+.btn {
+  display: block; width: calc(100% - 24px); margin: 0 12px 12px;
+  background: var(--btn); color: var(--btnt);
+  border: none; border-radius: 12px;
+  padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.btn:active { opacity: .85; }
+.btn.secondary { background: var(--bg); color: var(--btn); }
+.btn.danger    { background: var(--bg); color: #ff3b30; }
+.btn:disabled  { opacity: .45; pointer-events: none; }
+
+/* ── Input ── */
+.inp-wrap { margin: 0 12px 12px; }
+.inp {
+  width: 100%; background: var(--bg); border: none;
+  border-radius: 12px; padding: 14px 16px;
+  font-size: 15px; color: var(--text); outline: none;
+}
+.inp::placeholder { color: var(--hint); }
+textarea.inp { height: 88px; resize: none; font-family: monospace; font-size: 12px; }
+
+/* ── Code block ── */
+.code-wrap { margin: 0 12px 12px; position: relative; }
+.code-block {
+  background: #1e1e2e; color: #cdd6f4;
+  border-radius: 12px; padding: 14px;
+  font-family: monospace; font-size: 11px;
+  overflow-x: auto; white-space: pre; line-height: 1.5;
+}
+.copy-btn {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(255,255,255,.15); color: white;
+  border: none; padding: 5px 12px; border-radius: 8px;
+  font-size: 12px; cursor: pointer;
+}
+
+/* ── Progress ── */
+.prog { height: 3px; background: var(--bg2); overflow: hidden; margin-bottom: 4px; }
+.prog-bar { height: 100%; background: var(--btn); transition: width .3s; }
+
+/* ── Diff colors ── */
+.pos { color: #34c759; font-weight: 700; }
+.neg { color: #ff3b30; font-weight: 700; }
+.neu { color: var(--hint); }
+
+/* ── Product hero ── */
+.hero {
+  background: var(--bg); margin: 0 12px 12px; border-radius: 12px;
+  padding: 16px; display: flex; gap: 14px; align-items: flex-start;
+}
+.hero img { width: 88px; height: 88px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: var(--bg2); }
+.hero-info { flex: 1; min-width: 0; }
+.hero-title { font-size: 15px; font-weight: 600; line-height: 1.35; margin-bottom: 6px; }
+.hero-sub { font-size: 12px; color: var(--hint); line-height: 1.7; }
+
+/* ── Color bar ── */
+.cbar-wrap { height: 6px; background: var(--bg2); border-radius: 3px; flex: 1; overflow: hidden; }
+.cbar { height: 100%; background: var(--btn); border-radius: 3px; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.78); color: #fff;
+  padding: 9px 18px; border-radius: 20px; font-size: 13px;
+  z-index: 200; white-space: nowrap;
+  opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+/* ── Empty / Loader / Error ── */
+.empty { padding: 50px 20px; text-align: center; color: var(--hint); font-size: 14px; line-height: 1.7; }
+.empty .ico2 { font-size: 40px; display: block; margin-bottom: 10px; }
+.loader { padding: 40px; text-align: center; color: var(--hint); font-size: 14px; }
+.err-box { margin: 0 12px 12px; background: rgba(255,59,48,.1); color: #ff3b30; border-radius: 12px; padding: 14px; font-size: 13px; }
+
+/* ── Table (desktop / horizontal scroll) ── */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 420px; }
+th { padding: 9px 10px; text-align: left; font-size: 11px; font-weight: 600; color: var(--hint); border-bottom: 1px solid var(--div); }
+td { padding: 9px 10px; border-bottom: 1px solid var(--div); }
+tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>Uzum Market Analitika</h1>
-  <p>Aniq sotuv soni va rang taqsimoti (Uzum mobile API)</p>
+<!-- ── KUZATUV ── -->
+<div id="pg-tracked" class="page active">
+  <div class="sh">Avtomatik kuzatuv</div>
+  <div id="tracked-results"></div>
+  <button class="btn secondary" onclick="refreshTracked()" id="refresh-btn">🔄 Hozir yangilash</button>
 </div>
 
-<div class="container">
-
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('tracked')">📊 Kuzatuv</div>
-    <div class="tab" onclick="switchTab('product')">🔍 Bitta mahsulot</div>
-    <div class="tab" onclick="switchTab('category')">📁 Kategoriya</div>
+<!-- ── MAHSULOT ── -->
+<div id="pg-product" class="page">
+  <div class="sh">Mahsulot tahlili</div>
+  <div class="inp-wrap">
+    <input class="inp" id="pid-input" type="text" inputmode="numeric"
+      placeholder="Mahsulot ID (masalan: 2710846)">
   </div>
+  <button class="btn" onclick="loadProduct()">Yuklash</button>
+  <div id="product-result"></div>
+</div>
 
-  <!-- Kuzatuv -->
-  <div id="tab-tracked" class="tab-content active">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <div>
-          <h2 style="margin:0">Avtomatik kuzatuv</h2>
-          <div style="color:#64748b;font-size:12px;margin-top:4px">Server har 6 soatda barcha mahsulotlarni o'zi yangilaydi</div>
-        </div>
-        <button class="btn" style="margin:0" onclick="refreshTracked()">🔄 Hozir yangilash</button>
-      </div>
-    </div>
-    <div id="tracked-status"></div>
-    <div id="tracked-results"></div>
-  </div>
-
-  <!-- Kategoriya tahlili -->
-  <div id="tab-category" class="tab-content">
-    <div class="card">
-      <h2>1. Mahsulot ID larini yig'ing</h2>
-      <div class="step"><div class="step-num">1</div><div>Uzum kategoriya sahifasini oching</div></div>
-      <div class="step"><div class="step-num">2</div><div>Console (F12) → quyidagi skriptni ishga tushiring:</div></div>
-      <div class="code-wrap">
+<!-- ── KATEGORIYA ── -->
+<div id="pg-category" class="page">
+  <div class="sh">1-qadam — ID larni yig'ing</div>
+  <div class="section">
+    <div class="row" style="flex-direction:column;align-items:flex-start;cursor:default">
+      <div style="font-size:13px;color:var(--hint);margin-bottom:8px">Uzum kategoriya sahifasida F12 → Console → quyidagi kodni ishga tushiring:</div>
+      <div class="code-wrap" style="margin:0;width:100%">
         <pre class="code-block" id="scraper-code"></pre>
         <button class="copy-btn" onclick="copyCode()">Nusxa</button>
       </div>
     </div>
-
-    <div class="card">
-      <h2>2. ID larni joylashtiring (paste)</h2>
-      <textarea id="ids-input" placeholder="Console dan nusxalangan JSON ni shu yerga paste qiling..."></textarea>
-      <br>
-      <button class="btn" onclick="analyzeCategory()">Tahlil qilish</button>
-      <div class="progress" id="progress" style="display:none"><div class="progress-bar" id="progress-bar" style="width:0"></div></div>
-      <div id="cat-status"></div>
-    </div>
-
-    <div id="cat-results"></div>
   </div>
 
-  <!-- Bitta mahsulot -->
-  <div id="tab-product" class="tab-content">
-    <div class="card">
-      <h2>Mahsulot ID si bo'yicha qidirish</h2>
-      <div style="font-size:12px;color:#64748b;margin-bottom:8px">Misol: 1287402 yoki Uzum URL idan oxirgi raqam</div>
-      <input type="text" id="pid-input" placeholder="Mahsulot ID (1287402)">
-      <button class="btn" onclick="loadProduct()">Yuklash</button>
-    </div>
-    <div id="product-result"></div>
+  <div class="sh">2-qadam — ID larni paste qiling</div>
+  <div class="inp-wrap">
+    <textarea class="inp" id="ids-input" placeholder='["12345","67890",...]'></textarea>
   </div>
-
+  <div class="prog" id="progress" style="display:none"><div class="prog-bar" id="progress-bar"></div></div>
+  <button class="btn" onclick="analyzeCategory()">Tahlil qilish</button>
+  <div id="cat-status"></div>
+  <div id="cat-results"></div>
 </div>
+
+<!-- ── BOTTOM NAV ── -->
+<nav class="bnav">
+  <div class="bnav-item active" onclick="gotoPage('tracked',this)">
+    <span class="ico">📊</span>Kuzatuv
+  </div>
+  <div class="bnav-item" onclick="gotoPage('product',this)">
+    <span class="ico">🔍</span>Mahsulot
+  </div>
+  <div class="bnav-item" onclick="gotoPage('category',this)">
+    <span class="ico">📁</span>Kategoriya
+  </div>
+</nav>
+
+<div class="toast" id="toast"></div>
 
 <script>
 var API_BASE = (window.location.protocol === 'file:') ? 'http://localhost:8080' : '';
 
-var SCRAPER_CODE = [
-  "const ids = [];",
-  "document.querySelectorAll('a[data-test-id=\"product-card--default\"]').forEach(card => {",
-  "  const href = card.getAttribute('href') || '';",
-  "  const m = href.match(/-([0-9]+)\\?/) || href.match(/-([0-9]+)$/);",
-  "  if (m) ids.push(parseInt(m[1]));",
-  "});",
-  "const unique = [...new Set(ids)];",
-  "copy(JSON.stringify(unique));",
-  "console.log('Tayyor! ' + unique.length + ' ta mahsulot ID si clipboard ga ko\\'chirildi');"
-].join("\n");
+// ── Telegram init ──
+(function() {
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  var pid = new URLSearchParams(window.location.search).get('pid');
+  if (pid) {
+    gotoPage('product', document.querySelectorAll('.bnav-item')[1]);
+    document.getElementById('pid-input').value = pid;
+    loadProduct();
+  } else {
+    loadTracked();
+  }
+})();
 
+// ── Scraper code ──
+var SCRAPER_CODE = [
+  "const ids=[];",
+  "document.querySelectorAll('a[data-test-id=\"product-card--default\"]').forEach(c=>{",
+  "  const m=(c.getAttribute('href')||'').match(/-([0-9]+)[?$]/)||",
+  "          (c.getAttribute('href')||'').match(/-([0-9]+)$/);",
+  "  if(m)ids.push(parseInt(m[1]));",
+  "});",
+  "const u=[...new Set(ids)];",
+  "copy(JSON.stringify(u));",
+  "console.log('✅ '+u.length+' ta ID clipboard ga kochirildi');"
+].join("\n");
 document.getElementById('scraper-code').textContent = SCRAPER_CODE;
 
 function copyCode() {
   navigator.clipboard.writeText(SCRAPER_CODE);
   var b = event.target;
-  b.textContent = '✓ Nusxalandi';
-  setTimeout(() => b.textContent = 'Nusxa', 1500);
+  b.textContent = '✓'; setTimeout(() => b.textContent = 'Nusxa', 1500);
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
+// ── Navigation ──
+function gotoPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.bnav-item').forEach(i => i.classList.remove('active'));
+  document.getElementById('pg-' + name).classList.add('active');
+  el.classList.add('active');
   if (name === 'tracked') loadTracked();
+  window.scrollTo({ top: 0 });
 }
 
+// ── Formatters ──
+function fmtNum(n) { return (n||0).toLocaleString('ru-RU'); }
+function fmtMoney(n) {
+  if (!n) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(1)+' mlrd';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+' mln';
+  if (n >= 1e3) return Math.round(n/1e3)+' ming';
+  return String(n);
+}
+function diff(n) {
+  if (n === null || n === undefined) return '<span class="neu">—</span>';
+  if (n === 0) return '<span class="neu">0</span>';
+  return n > 0 ? '<span class="pos">+'+fmtNum(n)+'</span>'
+               : '<span class="neg">'+fmtNum(n)+'</span>';
+}
+
+// ── Toast ──
+var _toastTimer;
+function toast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ═══════════════════════════════════════
+//  KUZATUV
+// ═══════════════════════════════════════
 async function loadTracked() {
   var el = document.getElementById('tracked-results');
-  el.innerHTML = '<div class="loader">Yuklanyapti...</div>';
+  el.innerHTML = '<div class="loader">Yuklanmoqda...</div>';
   try {
-    var res = await fetch(API_BASE + '/api/tracked');
-    var data = await res.json();
-    renderTracked(data.products);
+    var d = await (await fetch(API_BASE + '/api/tracked')).json();
+    renderTracked(d.products);
   } catch(e) {
-    el.innerHTML = '<div class="card"><div class="err">Xato: ' + e.message + '</div></div>';
+    el.innerHTML = '<div class="err-box">Xato: ' + e.message + '</div>';
   }
 }
 
 async function refreshTracked() {
-  var status = document.getElementById('tracked-status');
-  status.innerHTML = '<div class="card" style="background:#fef3c7;color:#92400e;font-size:13px">⏳ Barcha mahsulotlar Uzum dan yangilanmoqda...</div>';
+  var btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.textContent = '⏳ Yangilanmoqda...';
   try {
-    var res = await fetch(API_BASE + '/api/refresh', { method: 'POST' });
-    var data = await res.json();
-    status.innerHTML = '<div class="card" style="background:#dcfce7;color:#166534;font-size:13px">✅ ' + data.refreshed + ' ta mahsulot yangilandi</div>';
+    var d = await (await fetch(API_BASE + '/api/refresh', { method: 'POST' })).json();
+    toast('✅ ' + d.refreshed + ' ta mahsulot yangilandi');
     loadTracked();
-    setTimeout(() => { status.innerHTML = ''; }, 3000);
   } catch(e) {
-    status.innerHTML = '<div class="card"><div class="err">Xato: ' + e.message + '</div></div>';
+    toast('❌ ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 Hozir yangilash';
   }
 }
 
 async function untrack(pid, title) {
-  if (!confirm('"' + title + '" ni kuzatishdan olib tashlaysizmi?')) return;
+  if (!confirm('"' + title.slice(0,40) + '" ni kuzatishdan olib tashlaysizmi?')) return;
   await fetch(API_BASE + '/api/untrack/' + pid, { method: 'DELETE' });
+  toast('🗑 Kuzatuvdan olib tashlandi');
   loadTracked();
-}
-
-function diffCell(n) {
-  if (n === null || n === undefined) return '<span style="color:#94a3b8">—</span>';
-  if (n === 0) return '<span style="color:#94a3b8">0</span>';
-  if (n > 0) return '<b style="color:#16a34a">+' + fmtNum(n) + '</b>';
-  return '<b style="color:#dc2626">' + fmtNum(n) + '</b>';
 }
 
 function renderTracked(products) {
   var el = document.getElementById('tracked-results');
   if (!products || !products.length) {
-    el.innerHTML = '<div class="card" style="text-align:center;color:#64748b;padding:30px">' +
-      '📭 Hali kuzatilayotgan mahsulot yo\'q<br><br>' +
-      '<small>"🔍 Bitta mahsulot" tabidan biror mahsulotni yuklang — avtomatik kuzatuvga qo\'shiladi</small></div>';
+    el.innerHTML = '<div class="empty"><span class="ico2">📭</span>' +
+      'Hali kuzatilayotgan mahsulot yo\'q.<br>' +
+      '<small>🔍 Mahsulot tabidan biror ID yuklang —<br>avtomatik kuzatuvga qo\'shiladi.</small></div>';
     return;
   }
 
-  var totalToday = products.reduce((s,p) => s + (p.today||0), 0);
-  var total7d = products.reduce((s,p) => s + (p.last7d||0), 0);
-  var total30d = products.reduce((s,p) => s + (p.last30d||0), 0);
+  var today = products.reduce((s,p) => s+(p.today||0), 0);
+  var w7    = products.reduce((s,p) => s+(p.last7d||0), 0);
+  var m30   = products.reduce((s,p) => s+(p.last30d||0), 0);
 
-  var html = '<div class="stats-grid">' +
-    '<div class="stat-card"><div class="value">' + products.length + '</div><div class="label">Kuzatuvda</div></div>' +
-    '<div class="stat-card"><div class="value" style="color:#16a34a">+' + fmtNum(totalToday) + '</div><div class="label">Bugun sotildi</div></div>' +
-    '<div class="stat-card"><div class="value">+' + fmtNum(total7d) + '</div><div class="label">7 kunda</div></div>' +
-    '<div class="stat-card"><div class="value">+' + fmtNum(total30d) + '</div><div class="label">30 kunda</div></div>' +
+  var html = '<div class="sgrid">' +
+    '<div class="sbox"><div class="val">'+products.length+'</div><div class="lbl">Kuzatuvda</div></div>' +
+    '<div class="sbox green"><div class="val">+'+fmtNum(today)+'</div><div class="lbl">Bugun sotildi</div></div>' +
+    '<div class="sbox"><div class="val">+'+fmtNum(w7)+'</div><div class="lbl">7 kunda</div></div>' +
+    '<div class="sbox"><div class="val">+'+fmtNum(m30)+'</div><div class="lbl">30 kunda</div></div>' +
     '</div>';
 
-  html += '<div class="card"><h2>Kuzatilayotgan mahsulotlar</h2><table>' +
-    '<thead><tr><th></th><th>Mahsulot</th><th>Bugun</th><th>7 kun</th><th>30 kun</th><th>Jami</th><th>Qoldiq</th><th></th></tr></thead><tbody>';
+  html += '<div class="sh">Mahsulotlar</div><div class="section">';
+  products.forEach(p => {
+    html +=
+      '<div class="row" onclick="showProduct('+p.id+')">' +
+        (p.photo ? '<img class="thumb" src="'+p.photo+'" loading="lazy">' : '<div class="thumb"></div>') +
+        '<div class="row-body">' +
+          '<div class="row-title">'+esc(p.title||'').slice(0,52)+'</div>' +
+          '<div class="row-sub">Jami: '+fmtNum(p.ordersNow)+' • Qoldiq: '+fmtNum(p.stockNow)+'</div>' +
+        '</div>' +
+        '<div class="row-right">' +
+          '<div class="row-val">'+diff(p.today)+'</div>' +
+          '<div class="row-lbl">bugun</div>' +
+        '</div>' +
+      '</div>';
+  });
+  html += '</div>';
 
+  html += '<div class="sh">Davr bo\'yicha sotuv</div><div class="section"><div class="tbl-wrap"><table>' +
+    '<thead><tr><th>Mahsulot</th><th>Bugun</th><th>7 kun</th><th>30 kun</th><th></th></tr></thead><tbody>';
   products.forEach(p => {
     html += '<tr>' +
-      '<td>' + (p.photo ? '<img class="product-img" src="' + p.photo + '" loading="lazy">' : '') + '</td>' +
-      '<td><a class="product-link" href="#" onclick="showProduct(' + p.id + ');return false">' + (p.title || '').slice(0, 55) + '</a></td>' +
-      '<td>' + diffCell(p.today) + '</td>' +
-      '<td>' + diffCell(p.last7d) + '</td>' +
-      '<td>' + diffCell(p.last30d) + '</td>' +
-      '<td>' + fmtNum(p.ordersNow) + '</td>' +
-      '<td>' + fmtNum(p.stockNow) + '</td>' +
-      '<td><button onclick="untrack(' + p.id + ', \'' + (p.title || '').replace(/'/g, '') .slice(0,30) + '\')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px">🗑</button></td>' +
-      '</tr>';
+      '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc((p.title||'').slice(0,40))+'</td>' +
+      '<td>'+diff(p.today)+'</td>' +
+      '<td>'+diff(p.last7d)+'</td>' +
+      '<td>'+diff(p.last30d)+'</td>' +
+      '<td><button onclick="event.stopPropagation();untrack('+p.id+',\''+esc((p.title||'').slice(0,30).replace(/'/g,''))+'\');" style="background:none;border:none;color:#ff3b30;cursor:pointer;font-size:17px;padding:2px 4px">🗑</button></td>' +
+    '</tr>';
   });
-  html += '</tbody></table></div>';
+  html += '</tbody></table></div></div>';
 
   el.innerHTML = html;
 }
 
-function fmtMoney(n) {
-  if (!n) return '—';
-  if (n >= 1e9) return (n/1e9).toFixed(1) + ' mlrd';
-  if (n >= 1e6) return (n/1e6).toFixed(1) + ' mln';
-  if (n >= 1e3) return (n/1e3).toFixed(0) + ' ming';
-  return n.toLocaleString('ru-RU');
+// ═══════════════════════════════════════
+//  MAHSULOT
+// ═══════════════════════════════════════
+function showProduct(id) {
+  document.getElementById('pid-input').value = id;
+  gotoPage('product', document.querySelectorAll('.bnav-item')[1]);
+  loadProduct();
 }
 
-function fmtNum(n) { return (n||0).toLocaleString('ru-RU'); }
+async function loadProduct() {
+  var pid = document.getElementById('pid-input').value.trim();
+  if (!pid) return;
+  var el = document.getElementById('product-result');
+  el.innerHTML = '<div class="loader">Yuklanmoqda...</div>';
+  try {
+    var d = await (await fetch(API_BASE + '/api/product/' + pid)).json();
+    if (d.error) throw new Error(d.error);
+    renderProduct(d);
+  } catch(e) {
+    el.innerHTML = '<div class="err-box">Xato: ' + e.message + '</div>';
+  }
+}
 
+function renderProduct(p) {
+  var colors = Object.entries(p.byColor || {});
+  var totalCS = colors.reduce((s,[,o]) => s+o.stock, 0) || 1;
+  var seller = p.seller || {};
+
+  var html = '<div class="hero">' +
+    (p.photo ? '<img src="'+p.photo+'">' : '') +
+    '<div class="hero-info">' +
+      '<div class="hero-title">'+esc(p.title||'')+'</div>' +
+      '<div class="hero-sub">' +
+        (p.category ? '📂 '+esc(p.category)+'<br>' : '') +
+        '🏪 '+esc(seller.title||'—')+'<br>' +
+        '📦 Sotuvchi jami buyurtma: '+fmtNum(seller.orders) +
+      '</div>' +
+    '</div></div>';
+
+  html += '<div class="sgrid">' +
+    '<div class="sbox"><div class="val">'+fmtNum(p.ordersAmount)+'</div><div class="lbl">Jami sotuv</div></div>' +
+    '<div class="sbox"><div class="val">'+fmtNum(p.rOrdersAmount)+'</div><div class="lbl">Yaqin davr</div></div>' +
+    '<div class="sbox"><div class="val">'+fmtNum(p.reviewsAmount)+'</div><div class="lbl">Izohlar</div></div>' +
+    '<div class="sbox"><div class="val">'+fmtNum(p.totalAvailableAmount)+'</div><div class="lbl">Qoldiq</div></div>' +
+    '<div class="sbox" style="grid-column:span 2"><div class="val">'+((p.rating||0).toFixed(1))+' ★</div><div class="lbl">Reyting</div></div>' +
+    '</div>';
+
+  if (colors.length) {
+    html += '<div class="sh">Rang bo\'yicha qoldiq</div><div class="section">';
+    colors.sort((a,b) => b[1].stock-a[1].stock).forEach(([name,info]) => {
+      var pct = Math.round(info.stock/totalCS*100);
+      html += '<div class="row" style="cursor:default">' +
+        '<div class="row-body">' +
+          '<div class="row-title">'+esc(name)+'</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:5px">' +
+            '<div class="cbar-wrap"><div class="cbar" style="width:'+pct+'%"></div></div>' +
+            '<span style="font-size:12px;color:var(--hint);white-space:nowrap">'+pct+'%</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="row-right"><div class="row-val">'+fmtNum(info.stock)+'</div><div class="row-lbl">dona</div></div>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div class="sh">Variantlar (SKU)</div><div class="section"><div class="tbl-wrap"><table>' +
+    '<thead><tr><th>Rang</th><th>O\'lcham</th><th>Narx</th><th>Qoldiq</th></tr></thead><tbody>';
+  p.variants.forEach(v => {
+    html += '<tr>' +
+      '<td>'+esc(v.color||'—')+'</td>' +
+      '<td>'+esc(v.size||'—')+'</td>' +
+      '<td>'+fmtMoney(v.price)+'</td>' +
+      '<td><b>'+fmtNum(v.stock)+'</b></td>' +
+    '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  if (p.history && p.history.length > 1) {
+    html += '<div class="sh">Sotuv tarixi</div><div class="section"><div class="tbl-wrap"><table>' +
+      '<thead><tr><th>Sana</th><th>Jami sotuv</th><th>O\'zgarish</th></tr></thead><tbody>';
+    var prev = null;
+    p.history.forEach(h => {
+      var d = prev ? h.orders - prev.orders : 0;
+      html += '<tr>' +
+        '<td style="white-space:nowrap">'+h.date.slice(0,16).replace('T',' ')+'</td>' +
+        '<td>'+fmtNum(h.orders)+'</td>' +
+        '<td>'+(d > 0 ? '<span class="pos">+'+d+' ta</span>' : '<span class="neu">—</span>')+'</td>' +
+      '</tr>';
+      prev = h;
+    });
+    html += '</tbody></table></div></div>';
+  } else {
+    html += '<div class="section"><div class="row" style="cursor:default;color:var(--hint);font-size:13px">' +
+      '💡 Bu birinchi snapshot. Server har 6 soatda yangilab boradi.' +
+    '</div></div>';
+  }
+
+  document.getElementById('product-result').innerHTML = html;
+}
+
+// ═══════════════════════════════════════
+//  KATEGORIYA
+// ═══════════════════════════════════════
 async function analyzeCategory() {
   var raw = document.getElementById('ids-input').value.trim();
-  if (!raw) { alert('ID lar kiritilmadi'); return; }
+  if (!raw) { toast('❌ ID lar kiritilmadi'); return; }
   var ids;
-  try { ids = JSON.parse(raw); } catch(e) { alert('JSON noto\'g\'ri'); return; }
-  if (!Array.isArray(ids)) { alert('Array bo\'lishi kerak'); return; }
+  try { ids = JSON.parse(raw); } catch(e) { toast('❌ JSON noto\'g\'ri'); return; }
+  if (!Array.isArray(ids) || !ids.length) { toast('❌ Bo\'sh ro\'yxat'); return; }
 
   var prog = document.getElementById('progress');
-  var bar = document.getElementById('progress-bar');
-  prog.style.display = 'block';
-  bar.style.width = '10%';
-  document.getElementById('cat-status').innerHTML = '<div class="loader">' + ids.length + ' ta mahsulot ma\'lumotini yuklayapmiz...</div>';
+  var bar  = document.getElementById('progress-bar');
+  prog.style.display = 'block'; bar.style.width = '10%';
+  document.getElementById('cat-status').innerHTML = '<div class="loader">'+ids.length+' ta mahsulot yuklanmoqda...</div>';
   document.getElementById('cat-results').innerHTML = '';
 
   try {
@@ -263,171 +513,55 @@ async function analyzeCategory() {
     bar.style.width = '90%';
     var data = await res.json();
     if (data.error) throw new Error(data.error);
-    renderCategory(data.products);
     bar.style.width = '100%';
-    setTimeout(() => { prog.style.display = 'none'; bar.style.width = '0'; }, 500);
+    setTimeout(() => { prog.style.display = 'none'; bar.style.width = '0'; }, 400);
     document.getElementById('cat-status').innerHTML = '';
+    renderCategory(data.products);
   } catch(e) {
-    document.getElementById('cat-status').innerHTML = '<div class="err">Xato: ' + e.message + '</div>';
     prog.style.display = 'none';
+    document.getElementById('cat-status').innerHTML = '<div class="err-box">Xato: '+e.message+'</div>';
   }
 }
 
 function renderCategory(products) {
-  if (!products || !products.length) {
-    document.getElementById('cat-results').innerHTML = '<div class="card">Hech narsa topilmadi</div>';
-    return;
-  }
+  var el = document.getElementById('cat-results');
+  if (!products || !products.length) { el.innerHTML = '<div class="empty">Hech narsa topilmadi</div>'; return; }
+  products.sort((a,b) => (b.orders||0)-(a.orders||0));
 
-  products.sort((a,b) => (b.orders||0) - (a.orders||0));
+  var tot  = products.reduce((s,p) => s+(p.orders||0), 0);
+  var trev = products.reduce((s,p) => s+(p.orders||0)*(p.price||0), 0);
+  var tst  = products.reduce((s,p) => s+(p.stock||0), 0);
 
-  var totalOrders = products.reduce((s,p) => s + (p.orders||0), 0);
-  var totalReviews = products.reduce((s,p) => s + (p.reviews||0), 0);
-  var totalStock = products.reduce((s,p) => s + (p.stock||0), 0);
-  var totalRevenue = products.reduce((s,p) => s + (p.orders||0)*(p.price||0), 0);
-
-  var html = '<div class="stats-grid">' +
-    '<div class="stat-card"><div class="value">' + products.length + '</div><div class="label">Mahsulotlar</div></div>' +
-    '<div class="stat-card"><div class="value">' + fmtNum(totalOrders) + '</div><div class="label">Jami sotuv</div></div>' +
-    '<div class="stat-card"><div class="value">' + fmtNum(totalReviews) + '</div><div class="label">Jami izohlar</div></div>' +
-    '<div class="stat-card"><div class="value">' + fmtNum(totalStock) + '</div><div class="label">Jami qoldiq</div></div>' +
-    '<div class="stat-card"><div class="value">' + fmtMoney(totalRevenue) + '</div><div class="label">Taxminiy tushum (so\'m)</div></div>' +
+  var html = '<div class="sgrid">' +
+    '<div class="sbox"><div class="val">'+products.length+'</div><div class="lbl">Mahsulotlar</div></div>' +
+    '<div class="sbox"><div class="val">'+fmtNum(tot)+'</div><div class="lbl">Jami sotuv</div></div>' +
+    '<div class="sbox"><div class="val">'+fmtMoney(trev)+'</div><div class="lbl">Taxminiy tushum</div></div>' +
+    '<div class="sbox"><div class="val">'+fmtNum(tst)+'</div><div class="lbl">Jami qoldiq</div></div>' +
     '</div>';
 
-  html += '<div class="card"><h2>Top mahsulotlar — buyurtma soni bo\'yicha</h2><table>';
-  html += '<thead><tr><th>#</th><th></th><th>Mahsulot</th><th>Sotuv</th><th>Izohlar</th><th>Qoldiq</th><th>Narx</th><th>Reyting</th></tr></thead><tbody>';
-
+  html += '<div class="sh">Top mahsulotlar</div><div class="section">';
   products.slice(0, 30).forEach((p, i) => {
-    var url = 'https://uzum.uz/ru/product/-' + p.id;
-    html += '<tr>' +
-      '<td class="rank">' + (i+1) + '</td>' +
-      '<td>' + (p.photo ? '<img class="product-img" src="' + p.photo + '" loading="lazy">' : '') + '</td>' +
-      '<td><a class="product-link" href="#" onclick="showProduct(' + p.id + ');return false">' + (p.title || '').slice(0, 60) + '</a></td>' +
-      '<td><b>' + fmtNum(p.orders) + '</b></td>' +
-      '<td>' + fmtNum(p.reviews) + '</td>' +
-      '<td>' + fmtNum(p.stock) + '</td>' +
-      '<td>' + fmtMoney(p.price) + '</td>' +
-      '<td><span class="badge">' + (p.rating || 0).toFixed(1) + ' ★</span></td>' +
-      '</tr>';
-  });
-  html += '</tbody></table></div>';
-
-  document.getElementById('cat-results').innerHTML = html;
-}
-
-function showProduct(id) {
-  document.getElementById('pid-input').value = id;
-  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === 1));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-product').classList.add('active');
-  loadProduct();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-// Kuzatuv tabini boshlang'ichda yuklash
-window.addEventListener('DOMContentLoaded', () => {
-  if (document.getElementById('tab-tracked').classList.contains('active')) {
-    loadTracked();
-  }
-});
-
-async function loadProduct() {
-  var pid = document.getElementById('pid-input').value.trim();
-  if (!pid) return;
-  document.getElementById('product-result').innerHTML = '<div class="loader">Yuklanyapti...</div>';
-  try {
-    var res = await fetch(API_BASE + '/api/product/' + pid);
-    var data = await res.json();
-    if (data.error) throw new Error(data.error);
-    renderProduct(data);
-  } catch(e) {
-    document.getElementById('product-result').innerHTML = '<div class="card"><div class="err">Xato: ' + e.message + '</div></div>';
-  }
-}
-
-function renderProduct(p) {
-  var colors = Object.entries(p.byColor || {});
-  var totalColorStock = colors.reduce((s,[c,o]) => s + o.stock, 0) || 1;
-
-  var html = '<div class="card" style="display:flex;gap:16px;align-items:flex-start">' +
-    (p.photo ? '<img src="' + p.photo + '" style="width:140px;height:140px;object-fit:cover;border-radius:12px">' : '') +
-    '<div style="flex:1">' +
-    '<h2 style="font-size:18px;margin-bottom:6px">' + p.title + '</h2>' +
-    '<div style="color:#64748b;font-size:13px;margin-bottom:8px">' + (p.category || '') + '</div>' +
-    '<div style="font-size:13px"><b>Sotuvchi:</b> ' + (p.seller?.title || '—') + ' • <b>Sotuvchining jami buyurtmalari:</b> ' + fmtNum(p.seller?.orders) + '</div>' +
-    '</div></div>';
-
-  html += '<div class="stats-grid">' +
-    '<div class="stat-card"><div class="value">' + fmtNum(p.ordersAmount) + '</div><div class="label">Jami sotuv</div></div>' +
-    '<div class="stat-card"><div class="value">' + fmtNum(p.rOrdersAmount) + '</div><div class="label">Yaqin davr</div></div>' +
-    '<div class="stat-card"><div class="value">' + fmtNum(p.reviewsAmount) + '</div><div class="label">Izohlar</div></div>' +
-    '<div class="stat-card"><div class="value">' + fmtNum(p.totalAvailableAmount) + '</div><div class="label">Jami qoldiq</div></div>' +
-    '<div class="stat-card"><div class="value">' + (p.rating||0).toFixed(1) + ' ★</div><div class="label">Reyting</div></div>' +
-    '</div>';
-
-  // Color breakdown
-  if (colors.length) {
-    html += '<div class="card"><h2>Rang bo\'yicha qoldiq</h2><table><thead><tr><th>Rang</th><th>Variantlar</th><th>Qoldiq</th><th>Ulushi</th></tr></thead><tbody>';
-    colors.sort((a,b) => b[1].stock - a[1].stock).forEach(([name, info]) => {
-      var pct = Math.round(info.stock / totalColorStock * 100);
-      html += '<tr><td><b>' + name + '</b></td><td>' + info.variants + '</td><td>' + fmtNum(info.stock) + '</td>' +
-        '<td><div style="background:#f1f5f9;border-radius:4px;height:18px;overflow:hidden;width:200px"><div style="background:linear-gradient(90deg,#6c63ff,#3b82f6);height:100%;width:' + pct + '%;color:white;text-align:center;font-size:11px;line-height:18px">' + pct + '%</div></div></td></tr>';
-    });
-    html += '</tbody></table></div>';
-  }
-
-  // All variants
-  html += '<div class="card"><h2>Barcha variantlar (SKU)</h2><table><thead><tr><th>SKU</th><th>Rang</th><th>O\'lcham</th><th>Narx</th><th>Asl narx</th><th>Qoldiq</th></tr></thead><tbody>';
-  p.variants.forEach(v => {
-    html += '<tr><td>' + v.skuId + '</td><td>' + v.color + '</td><td>' + v.size + '</td>' +
-      '<td>' + fmtMoney(v.price) + '</td><td style="color:#94a3b8;text-decoration:line-through">' + fmtMoney(v.fullPrice) + '</td>' +
-      '<td><b>' + fmtNum(v.stock) + '</b></td></tr>';
-  });
-  html += '</tbody></table></div>';
-
-  // History
-  if (p.history.length > 1) {
-    html += '<div class="card"><h2>Kuzatuv tarixi (kunlik snapshot)</h2><table><thead><tr><th>Sana</th><th>Sotuv</th><th>Qoldiq</th><th>O\'zgarish</th></tr></thead><tbody>';
-    var prev = null;
-    p.history.forEach(h => {
-      var diff = prev ? (h.orders - prev.orders) : 0;
-      html += '<tr><td>' + h.date.slice(0,16).replace('T',' ') + '</td><td>' + fmtNum(h.orders) + '</td><td>' + fmtNum(h.stock) + '</td>' +
-        '<td>' + (diff > 0 ? '<b style="color:#16a34a">+' + diff + ' ta sotildi</b>' : '—') + '</td></tr>';
-      prev = h;
-    });
-    html += '</tbody></table></div>';
-  } else {
-    html += '<div class="card" style="background:#fef3c7;color:#92400e;font-size:13px">' +
-      '💡 Bu birinchi snapshot. Ertaga yana shu mahsulotni yuklasangiz — kunlik sotuvlar farqi ko\'rinadi.' +
+    html +=
+      '<div class="row" onclick="showProduct('+p.id+')">' +
+        (p.photo ? '<img class="thumb" src="'+p.photo+'" loading="lazy">' : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:18px;font-weight:700">'+(i+1)+'</div>') +
+        '<div class="row-body">' +
+          '<div class="row-title">'+esc((p.title||'').slice(0,52))+'</div>' +
+          '<div class="row-sub">'+esc(p.seller||'')+(p.rating?' · ★'+(p.rating||0).toFixed(1):'')+'</div>' +
+        '</div>' +
+        '<div class="row-right">' +
+          '<div class="row-val">'+fmtNum(p.orders)+'</div>' +
+          '<div class="row-lbl">sotuv</div>' +
+        '</div>' +
       '</div>';
-  }
+  });
+  html += '</div>';
 
-  document.getElementById('product-result').innerHTML = html;
+  el.innerHTML = html;
 }
 
-// Telegram Mini App init
-(function() {
-  var tg = window.Telegram && window.Telegram.WebApp;
-  if (tg) {
-    tg.ready();
-    tg.expand();
-  }
-  // URL parametrdan pid o'qish (?pid=1287402)
-  var params = new URLSearchParams(window.location.search);
-  var pid = params.get('pid');
-  if (pid) {
-    switchTabByName('product');
-    document.getElementById('pid-input').value = pid;
-    loadProduct();
-  }
-})();
-
-function switchTabByName(name) {
-  var idx = { tracked: 0, product: 1, category: 2 }[name];
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
-  document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'tracked') loadTracked();
+// ── XSS himoyasi ──
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 </body>
