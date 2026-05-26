@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Uzum Analitika</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+  .header { background: linear-gradient(135deg, #6c63ff, #3b82f6); padding: 20px 32px; color: white; }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .header p { font-size: 13px; opacity: 0.85; margin-top: 3px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
+  .tabs { display: flex; gap: 4px; background: white; border-radius: 10px; padding: 4px; margin-bottom: 16px; }
+  .tab { flex: 1; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
+  .tab.active { background: #6c63ff; color: white; }
+  .card { background: white; border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+  .step { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; margin-bottom: 6px; }
+  .step-num { background: #6c63ff; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .code-wrap { position: relative; margin: 10px 0; }
+  .code-block { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 11px; overflow-x: auto; white-space: pre; line-height: 1.5; }
+  .copy-btn { position: absolute; top: 6px; right: 6px; background: #6c63ff; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+  textarea { width: 100%; height: 80px; border: 2px solid #e2e8f0; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; resize: vertical; }
+  textarea:focus { outline: none; border-color: #6c63ff; }
+  input[type=text], input[type=number] { width: 100%; border: 2px solid #e2e8f0; border-radius: 8px; padding: 10px; font-size: 14px; }
+  input[type=text]:focus, input[type=number]:focus { outline: none; border-color: #6c63ff; }
+  .btn { background: #6c63ff; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+  .btn:hover { background: #5b52e0; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .stat-card { background: white; border-radius: 12px; padding: 16px; text-align: center; }
+  .stat-card .value { font-size: 22px; font-weight: 700; color: #6c63ff; }
+  .stat-card .label { font-size: 12px; color: #64748b; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f8fafc; padding: 9px 10px; text-align: left; font-weight: 600; color: #64748b; border-bottom: 2px solid #e2e8f0; font-size: 12px; }
+  td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; }
+  tr:hover td { background: #fafbfc; }
+  .rank { font-weight: 700; color: #6c63ff; }
+  .product-img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; background: #f1f5f9; }
+  .product-link { color: #1a1a2e; text-decoration: none; font-weight: 500; }
+  .product-link:hover { color: #6c63ff; }
+  .badge { background: #f0f0ff; color: #6c63ff; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .color-pill { display: inline-block; padding: 3px 10px; background: #f1f5f9; border-radius: 12px; font-size: 11px; margin: 2px; }
+  .color-pill b { color: #6c63ff; margin-left: 4px; }
+  .loader { text-align: center; padding: 30px; color: #6c63ff; font-weight: 600; }
+  .err { background: #fef2f2; color: #b91c1c; padding: 10px 14px; border-radius: 8px; font-size: 13px; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .progress { height: 4px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, #6c63ff, #3b82f6); transition: width 0.3s; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Uzum Market Analitika</h1>
+  <p>Aniq sotuv soni va rang taqsimoti (Uzum mobile API)</p>
+</div>
+
+<div class="container">
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('category')">Kategoriya tahlili</div>
+    <div class="tab" onclick="switchTab('product')">Bitta mahsulot</div>
+  </div>
+
+  <!-- Kategoriya tahlili -->
+  <div id="tab-category" class="tab-content active">
+    <div class="card">
+      <h2>1. Mahsulot ID larini yig'ing</h2>
+      <div class="step"><div class="step-num">1</div><div>Uzum kategoriya sahifasini oching</div></div>
+      <div class="step"><div class="step-num">2</div><div>Console (F12) → quyidagi skriptni ishga tushiring:</div></div>
+      <div class="code-wrap">
+        <pre class="code-block" id="scraper-code"></pre>
+        <button class="copy-btn" onclick="copyCode()">Nusxa</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2. ID larni joylashtiring (paste)</h2>
+      <textarea id="ids-input" placeholder="Console dan nusxalangan JSON ni shu yerga paste qiling..."></textarea>
+      <br>
+      <button class="btn" onclick="analyzeCategory()">Tahlil qilish</button>
+      <div class="progress" id="progress" style="display:none"><div class="progress-bar" id="progress-bar" style="width:0"></div></div>
+      <div id="cat-status"></div>
+    </div>
+
+    <div id="cat-results"></div>
+  </div>
+
+  <!-- Bitta mahsulot -->
+  <div id="tab-product" class="tab-content">
+    <div class="card">
+      <h2>Mahsulot ID si bo'yicha qidirish</h2>
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px">Misol: 1287402 yoki Uzum URL idan oxirgi raqam</div>
+      <input type="text" id="pid-input" placeholder="Mahsulot ID (1287402)">
+      <button class="btn" onclick="loadProduct()">Yuklash</button>
+    </div>
+    <div id="product-result"></div>
+  </div>
+
+</div>
+
+<script>
+var API_BASE = (window.location.protocol === 'file:') ? 'http://localhost:8080' : '';
+
+var SCRAPER_CODE = [
+  "const ids = [];",
+  "document.querySelectorAll('a[data-test-id=\"product-card--default\"]').forEach(card => {",
+  "  const href = card.getAttribute('href') || '';",
+  "  const m = href.match(/-([0-9]+)\\?/) || href.match(/-([0-9]+)$/);",
+  "  if (m) ids.push(parseInt(m[1]));",
+  "});",
+  "const unique = [...new Set(ids)];",
+  "copy(JSON.stringify(unique));",
+  "console.log('Tayyor! ' + unique.length + ' ta mahsulot ID si clipboard ga ko\\'chirildi');"
+].join("\n");
+
+document.getElementById('scraper-code').textContent = SCRAPER_CODE;
+
+function copyCode() {
+  navigator.clipboard.writeText(SCRAPER_CODE);
+  var b = event.target;
+  b.textContent = '✓ Nusxalandi';
+  setTimeout(() => b.textContent = 'Nusxa', 1500);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+function fmtMoney(n) {
+  if (!n) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + ' mlrd';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + ' mln';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + ' ming';
+  return n.toLocaleString('ru-RU');
+}
+
+function fmtNum(n) { return (n||0).toLocaleString('ru-RU'); }
+
+async function analyzeCategory() {
+  var raw = document.getElementById('ids-input').value.trim();
+  if (!raw) { alert('ID lar kiritilmadi'); return; }
+  var ids;
+  try { ids = JSON.parse(raw); } catch(e) { alert('JSON noto\'g\'ri'); return; }
+  if (!Array.isArray(ids)) { alert('Array bo\'lishi kerak'); return; }
+
+  var prog = document.getElementById('progress');
+  var bar = document.getElementById('progress-bar');
+  prog.style.display = 'block';
+  bar.style.width = '10%';
+  document.getElementById('cat-status').innerHTML = '<div class="loader">' + ids.length + ' ta mahsulot ma\'lumotini yuklayapmiz...</div>';
+  document.getElementById('cat-results').innerHTML = '';
+
+  try {
+    var res = await fetch(API_BASE + '/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids })
+    });
+    bar.style.width = '90%';
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderCategory(data.products);
+    bar.style.width = '100%';
+    setTimeout(() => { prog.style.display = 'none'; bar.style.width = '0'; }, 500);
+    document.getElementById('cat-status').innerHTML = '';
+  } catch(e) {
+    document.getElementById('cat-status').innerHTML = '<div class="err">Xato: ' + e.message + '</div>';
+    prog.style.display = 'none';
+  }
+}
+
+function renderCategory(products) {
+  if (!products || !products.length) {
+    document.getElementById('cat-results').innerHTML = '<div class="card">Hech narsa topilmadi</div>';
+    return;
+  }
+
+  products.sort((a,b) => (b.orders||0) - (a.orders||0));
+
+  var totalOrders = products.reduce((s,p) => s + (p.orders||0), 0);
+  var totalReviews = products.reduce((s,p) => s + (p.reviews||0), 0);
+  var totalStock = products.reduce((s,p) => s + (p.stock||0), 0);
+  var totalRevenue = products.reduce((s,p) => s + (p.orders||0)*(p.price||0), 0);
+
+  var html = '<div class="stats-grid">' +
+    '<div class="stat-card"><div class="value">' + products.length + '</div><div class="label">Mahsulotlar</div></div>' +
+    '<div class="stat-card"><div class="value">' + fmtNum(totalOrders) + '</div><div class="label">Jami sotuv</div></div>' +
+    '<div class="stat-card"><div class="value">' + fmtNum(totalReviews) + '</div><div class="label">Jami izohlar</div></div>' +
+    '<div class="stat-card"><div class="value">' + fmtNum(totalStock) + '</div><div class="label">Jami qoldiq</div></div>' +
+    '<div class="stat-card"><div class="value">' + fmtMoney(totalRevenue) + '</div><div class="label">Taxminiy tushum (so\'m)</div></div>' +
+    '</div>';
+
+  html += '<div class="card"><h2>Top mahsulotlar — buyurtma soni bo\'yicha</h2><table>';
+  html += '<thead><tr><th>#</th><th></th><th>Mahsulot</th><th>Sotuv</th><th>Izohlar</th><th>Qoldiq</th><th>Narx</th><th>Reyting</th></tr></thead><tbody>';
+
+  products.slice(0, 30).forEach((p, i) => {
+    var url = 'https://uzum.uz/ru/product/-' + p.id;
+    html += '<tr>' +
+      '<td class="rank">' + (i+1) + '</td>' +
+      '<td>' + (p.photo ? '<img class="product-img" src="' + p.photo + '" loading="lazy">' : '') + '</td>' +
+      '<td><a class="product-link" href="#" onclick="showProduct(' + p.id + ');return false">' + (p.title || '').slice(0, 60) + '</a></td>' +
+      '<td><b>' + fmtNum(p.orders) + '</b></td>' +
+      '<td>' + fmtNum(p.reviews) + '</td>' +
+      '<td>' + fmtNum(p.stock) + '</td>' +
+      '<td>' + fmtMoney(p.price) + '</td>' +
+      '<td><span class="badge">' + (p.rating || 0).toFixed(1) + ' ★</span></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+
+  document.getElementById('cat-results').innerHTML = html;
+}
+
+function showProduct(id) {
+  document.getElementById('pid-input').value = id;
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === 1));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-product').classList.add('active');
+  loadProduct();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function loadProduct() {
+  var pid = document.getElementById('pid-input').value.trim();
+  if (!pid) return;
+  document.getElementById('product-result').innerHTML = '<div class="loader">Yuklanyapti...</div>';
+  try {
+    var res = await fetch(API_BASE + '/api/product/' + pid);
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderProduct(data);
+  } catch(e) {
+    document.getElementById('product-result').innerHTML = '<div class="card"><div class="err">Xato: ' + e.message + '</div></div>';
+  }
+}
+
+function renderProduct(p) {
+  var colors = Object.entries(p.byColor || {});
+  var totalColorStock = colors.reduce((s,[c,o]) => s + o.stock, 0) || 1;
+
+  var html = '<div class="card" style="display:flex;gap:16px;align-items:flex-start">' +
+    (p.photo ? '<img src="' + p.photo + '" style="width:140px;height:140px;object-fit:cover;border-radius:12px">' : '') +
+    '<div style="flex:1">' +
+    '<h2 style="font-size:18px;margin-bottom:6px">' + p.title + '</h2>' +
+    '<div style="color:#64748b;font-size:13px;margin-bottom:8px">' + (p.category || '') + '</div>' +
+    '<div style="font-size:13px"><b>Sotuvchi:</b> ' + (p.seller?.title || '—') + ' • <b>Sotuvchining jami buyurtmalari:</b> ' + fmtNum(p.seller?.orders) + '</div>' +
+    '</div></div>';
+
+  html += '<div class="stats-grid">' +
+    '<div class="stat-card"><div class="value">' + fmtNum(p.ordersAmount) + '</div><div class="label">Jami sotuv</div></div>' +
+    '<div class="stat-card"><div class="value">' + fmtNum(p.rOrdersAmount) + '</div><div class="label">Yaqin davr</div></div>' +
+    '<div class="stat-card"><div class="value">' + fmtNum(p.reviewsAmount) + '</div><div class="label">Izohlar</div></div>' +
+    '<div class="stat-card"><div class="value">' + fmtNum(p.totalAvailableAmount) + '</div><div class="label">Jami qoldiq</div></div>' +
+    '<div class="stat-card"><div class="value">' + (p.rating||0).toFixed(1) + ' ★</div><div class="label">Reyting</div></div>' +
+    '</div>';
+
+  // Color breakdown
+  if (colors.length) {
+    html += '<div class="card"><h2>Rang bo\'yicha qoldiq</h2><table><thead><tr><th>Rang</th><th>Variantlar</th><th>Qoldiq</th><th>Ulushi</th></tr></thead><tbody>';
+    colors.sort((a,b) => b[1].stock - a[1].stock).forEach(([name, info]) => {
+      var pct = Math.round(info.stock / totalColorStock * 100);
+      html += '<tr><td><b>' + name + '</b></td><td>' + info.variants + '</td><td>' + fmtNum(info.stock) + '</td>' +
+        '<td><div style="background:#f1f5f9;border-radius:4px;height:18px;overflow:hidden;width:200px"><div style="background:linear-gradient(90deg,#6c63ff,#3b82f6);height:100%;width:' + pct + '%;color:white;text-align:center;font-size:11px;line-height:18px">' + pct + '%</div></div></td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  // All variants
+  html += '<div class="card"><h2>Barcha variantlar (SKU)</h2><table><thead><tr><th>SKU</th><th>Rang</th><th>O\'lcham</th><th>Narx</th><th>Asl narx</th><th>Qoldiq</th></tr></thead><tbody>';
+  p.variants.forEach(v => {
+    html += '<tr><td>' + v.skuId + '</td><td>' + v.color + '</td><td>' + v.size + '</td>' +
+      '<td>' + fmtMoney(v.price) + '</td><td style="color:#94a3b8;text-decoration:line-through">' + fmtMoney(v.fullPrice) + '</td>' +
+      '<td><b>' + fmtNum(v.stock) + '</b></td></tr>';
+  });
+  html += '</tbody></table></div>';
+
+  // History
+  if (p.history.length > 1) {
+    html += '<div class="card"><h2>Kuzatuv tarixi (kunlik snapshot)</h2><table><thead><tr><th>Sana</th><th>Sotuv</th><th>Qoldiq</th><th>O\'zgarish</th></tr></thead><tbody>';
+    var prev = null;
+    p.history.forEach(h => {
+      var diff = prev ? (h.orders - prev.orders) : 0;
+      html += '<tr><td>' + h.date.slice(0,16).replace('T',' ') + '</td><td>' + fmtNum(h.orders) + '</td><td>' + fmtNum(h.stock) + '</td>' +
+        '<td>' + (diff > 0 ? '<b style="color:#16a34a">+' + diff + ' ta sotildi</b>' : '—') + '</td></tr>';
+      prev = h;
+    });
+    html += '</tbody></table></div>';
+  } else {
+    html += '<div class="card" style="background:#fef3c7;color:#92400e;font-size:13px">' +
+      '💡 Bu birinchi snapshot. Ertaga yana shu mahsulotni yuklasangiz — kunlik sotuvlar farqi ko\'rinadi.' +
+      '</div>';
+  }
+
+  document.getElementById('product-result').innerHTML = html;
+}
+
+// Telegram Mini App init
+(function() {
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+  }
+  // URL parametrdan pid o'qish (?pid=1287402)
+  var params = new URLSearchParams(window.location.search);
+  var pid = params.get('pid');
+  if (pid) {
+    switchTabByName('product');
+    document.getElementById('pid-input').value = pid;
+    loadProduct();
+  }
+})();
+
+function switchTabByName(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && name === 'category') || (i === 1 && name === 'product'));
+  });
+  document.getElementById('tab-' + name).classList.add('active');
+}
+</script>
+</body>
+</html>

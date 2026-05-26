@@ -1,0 +1,9 @@
+settings.json
+bot_settings.json
+uzum.db
+*.pyc
+__pycache__/
+product_response.json
+test_*.py
+find_api.py
+server.log
