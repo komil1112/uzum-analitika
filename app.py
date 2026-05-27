@@ -78,6 +78,12 @@ def init_db():
       last_refreshed TEXT
     );
     """)
+    # Migration: weekly_buyers ustun
+    cols = [r[1] for r in con.execute("PRAGMA table_info(tracked_products)").fetchall()]
+    if "weekly_buyers" not in cols:
+        con.execute("ALTER TABLE tracked_products ADD COLUMN weekly_buyers INTEGER")
+    if "weekly_updated_at" not in cols:
+        con.execute("ALTER TABLE tracked_products ADD COLUMN weekly_updated_at TEXT")
     con.commit()
     con.close()
 
@@ -354,11 +360,12 @@ def list_tracked():
     """Kuzatilayotgan barcha mahsulotlar va davriy sotuv farqi."""
     con = sqlite3.connect(DB_PATH)
     tracked = con.execute(
-        "SELECT product_id, title, photo, added_at, last_refreshed FROM tracked_products ORDER BY last_refreshed DESC"
+        "SELECT product_id, title, photo, added_at, last_refreshed, weekly_buyers, weekly_updated_at "
+        "FROM tracked_products ORDER BY last_refreshed DESC"
     ).fetchall()
 
     products = []
-    for pid, title, photo, added_at, last_refreshed in tracked:
+    for pid, title, photo, added_at, last_refreshed, weekly_buyers, weekly_updated_at in tracked:
         # Eng oxirgi snapshot
         latest = con.execute(
             "SELECT orders_amount, total_stock, taken_at FROM snapshots WHERE product_id=? ORDER BY taken_at DESC LIMIT 1",
@@ -391,10 +398,12 @@ def list_tracked():
             "today": (orders_now - o_1d) if o_1d is not None else None,
             "last7d": (orders_now - o_7d) if o_7d is not None else None,
             "last30d": (orders_now - o_30d) if o_30d is not None else None,
+            "weeklyBuyers": weekly_buyers,
+            "weeklyUpdatedAt": weekly_updated_at,
         })
 
     con.close()
-    products.sort(key=lambda x: (x.get("today") or 0), reverse=True)
+    products.sort(key=lambda x: (x.get("weeklyBuyers") or x.get("today") or 0), reverse=True)
     return jsonify({"products": products, "count": len(products)})
 
 
@@ -446,6 +455,22 @@ def probe_endpoints(pid):
     return jsonify(results)
 
 
+@app.route("/api/weekly", methods=["POST"])
+def weekly_batch():
+    """Tanlangan mahsulotlar uchun 'Bu hafta N kishi' raqamlarini oladi (Playwright)."""
+    ids = (request.json or {}).get("ids", [])
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "ids ro'yxat bo'lishi kerak"}), 400
+    try:
+        from weekly_scraper import fetch_weekly_batch
+        # Max 30 ta - juda ko'p bo'lsa vaqt oladi
+        ids_int = [int(x) for x in ids[:30]]
+        data = fetch_weekly_batch(ids_int, delay=0.3)
+        return jsonify({"weekly": {str(k): v for k, v in data.items()}})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/track", methods=["POST"])
 def track_batch():
     """Tanlangan mahsulotlarni kuzatuvga qo'shish."""
@@ -475,8 +500,11 @@ def untrack(pid):
     return jsonify({"ok": True})
 
 
-def refresh_all_tracked():
-    """Barcha kuzatilayotgan mahsulotlarni Uzum API dan yangilaydi."""
+def refresh_all_tracked(fetch_weekly=True):
+    """Barcha kuzatilayotgan mahsulotlarni Uzum API dan yangilaydi.
+
+    fetch_weekly=True bo'lsa, "Bu hafta X kishi" ma'lumotini ham Playwright orqali oladi.
+    """
     con = sqlite3.connect(DB_PATH)
     ids = [r[0] for r in con.execute("SELECT product_id FROM tracked_products").fetchall()]
     con.close()
@@ -494,6 +522,28 @@ def refresh_all_tracked():
         except Exception as e:
             print(f"  ❌ {pid}: {e}")
     print(f"✅ Yangilandi: {refreshed}/{len(ids)}")
+
+    # Haftalik xaridorlar sonini ham yangilaymiz (sekinroq)
+    if fetch_weekly and ids:
+        try:
+            from weekly_scraper import fetch_weekly_batch
+            print(f"📊 Haftalik ma'lumot yuklanmoqda ({len(ids)} ta)...")
+            weekly_data = fetch_weekly_batch(ids, delay=0.3)
+            now = datetime.utcnow().isoformat()
+            con = sqlite3.connect(DB_PATH)
+            for pid, count in weekly_data.items():
+                if count is not None:
+                    con.execute(
+                        "UPDATE tracked_products SET weekly_buyers=?, weekly_updated_at=? WHERE product_id=?",
+                        (count, now, pid),
+                    )
+            con.commit()
+            con.close()
+            ok = sum(1 for v in weekly_data.values() if v is not None)
+            print(f"✅ Haftalik yangilandi: {ok}/{len(ids)}")
+        except Exception as e:
+            print(f"⚠️ Haftalik yangilash xato: {e}")
+
     return refreshed
 
 

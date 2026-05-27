@@ -511,12 +511,13 @@ function renderTracked(products) {
 
   var today = products.reduce((s,p) => s+(p.today||0), 0);
   var w7    = products.reduce((s,p) => s+(p.last7d||0), 0);
+  var wb    = products.reduce((s,p) => s+(p.weeklyBuyers||0), 0);
   var m30   = products.reduce((s,p) => s+(p.last30d||0), 0);
 
   var html = '<div class="sgrid">' +
     '<div class="sbox"><div class="val">'+products.length+'</div><div class="lbl">Kuzatuvda</div></div>' +
-    '<div class="sbox green"><div class="val">+'+fmtNum(today)+'</div><div class="lbl">Bugun sotildi</div></div>' +
-    '<div class="sbox"><div class="val">+'+fmtNum(w7)+'</div><div class="lbl">7 kunda</div></div>' +
+    '<div class="sbox green"><div class="val">'+fmtNum(wb)+'</div><div class="lbl">🔥 Bu hafta kishi</div></div>' +
+    '<div class="sbox"><div class="val">+'+fmtNum(today)+'</div><div class="lbl">Bugun sotildi</div></div>' +
     '<div class="sbox"><div class="val">+'+fmtNum(m30)+'</div><div class="lbl">30 kunda</div></div>' +
     '</div>';
 
@@ -527,6 +528,14 @@ function renderTracked(products) {
       ? '<div class="row-check ' + (isSel ? 'checked' : '') + '" id="chk-' + p.id + '"></div>'
       : (p.photo ? '<img class="thumb" src="' + p.photo + '" loading="lazy">' : '<div class="thumb"></div>');
     var onclick = trackedSelectMode ? 'toggleTrackedRow(' + p.id + ')' : 'showProduct(' + p.id + ')';
+    var rightVal, rightLbl;
+    if (p.weeklyBuyers !== null && p.weeklyBuyers !== undefined) {
+      rightVal = '<div class="row-val pos">🔥 ' + fmtNum(p.weeklyBuyers) + '</div>';
+      rightLbl = 'bu hafta';
+    } else {
+      rightVal = '<div class="row-val">' + diff(p.today) + '</div>';
+      rightLbl = 'bugun';
+    }
     html +=
       '<div class="row" id="row-' + p.id + '" onclick="' + onclick + '" style="' + (isSel ? 'background:rgba(38,120,182,.08)' : '') + '">' +
         leftEl +
@@ -535,8 +544,8 @@ function renderTracked(products) {
           '<div class="row-sub">Jami: ' + fmtNum(p.ordersNow) + ' • Qoldiq: ' + fmtNum(p.stockNow) + '</div>' +
         '</div>' +
         '<div class="row-right">' +
-          '<div class="row-val">' + diff(p.today) + '</div>' +
-          '<div class="row-lbl">bugun</div>' +
+          rightVal +
+          '<div class="row-lbl">' + rightLbl + '</div>' +
         '</div>' +
       '</div>';
   });
@@ -722,10 +731,11 @@ function renderCategory(products) {
     '<div class="sbox green"><div class="val">'+fmtNum(totR)+'</div><div class="lbl">Bu hafta sotildi</div></div>' +
     '<div class="sbox"><div class="val">'+fmtNum(tst)+'</div><div class="lbl">Jami qoldiq</div></div>' +
     '</div>' +
-    '<div style="display:flex;gap:8px;padding:0 12px 12px">' +
+    '<div style="display:flex;gap:8px;padding:0 12px 8px">' +
       '<button class="sort-btn active" onclick="setCatSort(\'orders\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer">📦 Jami sotuv</button>' +
-      '<button class="sort-btn" onclick="setCatSort(\'rorders\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:var(--hint);font-size:13px;font-weight:600;cursor:pointer">🔥 Bu hafta</button>' +
-    '</div>';
+      '<button class="sort-btn" onclick="setCatSort(\'weekly\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:var(--hint);font-size:13px;font-weight:600;cursor:pointer">🔥 Bu hafta</button>' +
+    '</div>' +
+    '<button class="btn secondary" onclick="enrichWeekly()" id="enrich-btn" style="margin:0 12px 12px">📊 Aniq haftalik sonni yuklash (sekin)</button>';
 
   document.getElementById('cat-results').innerHTML = statsHtml + '<div id="cat-rows-wrap"></div>';
 
@@ -738,13 +748,48 @@ function renderCategory(products) {
   rerenderCatRows();
 }
 
+async function enrichWeekly() {
+  var btn = document.getElementById('enrich-btn');
+  if (!btn) return;
+  var ids = _catProducts.slice(0, 30).map(p => p.id);
+  btn.disabled = true;
+  btn.textContent = '⏳ Yuklanmoqda... (~' + (ids.length * 4) + ' soniya)';
+  try {
+    var res = await fetch(API_BASE + '/api/weekly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids })
+    });
+    var d = await res.json();
+    if (d.error) throw new Error(d.error);
+    var weekly = d.weekly || {};
+    _catProducts.forEach(p => {
+      if (weekly[p.id] !== undefined) p.weeklyBuyers = weekly[p.id];
+    });
+    toast('✅ Haftalik raqamlar yuklandi');
+    // Avtomatik haftalik sortga o'tkazamiz
+    _catSort = 'weekly';
+    document.querySelectorAll('.sort-btn').forEach((b, i) => {
+      b.classList.toggle('active', i === 1);
+    });
+    rerenderCatRows();
+  } catch(e) {
+    toast('❌ ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📊 Aniq haftalik sonni yuklash (sekin)';
+  }
+}
+
 function rerenderCatRows() {
   var wrap = document.getElementById('cat-rows-wrap');
   if (!wrap) return;
 
   // Saralash
   var sorted = _catProducts.slice();
-  if (_catSort === 'rorders') {
+  if (_catSort === 'weekly') {
+    sorted.sort((a,b) => (b.weeklyBuyers||0) - (a.weeklyBuyers||0));
+  } else if (_catSort === 'rorders') {
     sorted.sort((a,b) => (b.rOrders||0) - (a.rOrders||0));
   } else {
     sorted.sort((a,b) => (b.orders||0) - (a.orders||0));
@@ -763,9 +808,14 @@ function rerenderCatRows() {
       ? 'toggleCatRow(' + p.id + ', _catProducts[' + origIdx + '])'
       : 'showProduct(' + p.id + ')';
 
-    var rightVal = _catSort === 'rorders'
-      ? '<div class="row-val pos">+' + fmtNum(p.rOrders) + '</div><div class="row-lbl">bu hafta</div>'
-      : '<div class="row-val">' + fmtNum(p.orders) + '</div><div class="row-lbl">jami</div>';
+    var rightVal;
+    if (_catSort === 'weekly' && p.weeklyBuyers !== undefined && p.weeklyBuyers !== null) {
+      rightVal = '<div class="row-val pos">🔥 ' + fmtNum(p.weeklyBuyers) + '</div><div class="row-lbl">bu hafta</div>';
+    } else if (_catSort === 'rorders') {
+      rightVal = '<div class="row-val pos">+' + fmtNum(p.rOrders) + '</div><div class="row-lbl">yaqin davr</div>';
+    } else {
+      rightVal = '<div class="row-val">' + fmtNum(p.orders) + '</div><div class="row-lbl">jami</div>';
+    }
 
     html +=
       '<div class="row" id="row-cat-' + p.id + '" onclick="' + onclick + '" style="' + (isSel ? 'background:rgba(38,120,182,.08)' : '') + '">' +

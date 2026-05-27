@@ -1,5 +1,6 @@
 settings.json
 bot_settings.json
+uzum_session.json
 uzum.db
 *.pyc
 __pycache__/
