@@ -343,10 +343,18 @@ tr:last-child td { border-bottom: none; }
   <div class="sh-handle"></div>
   <div class="sh-header">
     <div class="sh-title" id="sh-title">Sotuvlar tarixi</div>
-    <div class="sh-tabs">
-      <button class="sh-tab" data-days="1" onclick="loadSalesHistory(1)">Bugun</button>
-      <button class="sh-tab active" data-days="7" onclick="loadSalesHistory(7)">7 kun</button>
-      <button class="sh-tab" data-days="30" onclick="loadSalesHistory(30)">30 kun</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="sh-tabs" style="flex:1">
+        <button class="sh-tab" data-days="1" onclick="loadSalesHistory(1)">Bugun</button>
+        <button class="sh-tab active" data-days="7" onclick="loadSalesHistory(7)">7 kun</button>
+        <button class="sh-tab" data-days="30" onclick="loadSalesHistory(30)">30 kun</button>
+      </div>
+      <a id="sh-uzum-link" href="#" target="_blank"
+         style="display:inline-flex;align-items:center;gap:5px;background:var(--bg2);
+                border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;
+                color:var(--link);text-decoration:none;white-space:nowrap;flex-shrink:0">
+        🔗 Uzum
+      </a>
     </div>
   </div>
   <div class="sh-body" id="sh-body">
@@ -442,6 +450,7 @@ function openSalesModal(pid, title) {
   _shTitle = title;
   _shActiveDays = 7;
   document.getElementById('sh-title').textContent = title.slice(0, 60) || 'Sotuvlar tarixi';
+  document.getElementById('sh-uzum-link').href = 'https://uzum.uz/ru/product/p-' + pid;
   document.getElementById('sh-overlay').classList.add('show');
   document.getElementById('sh-modal').classList.add('show');
   // tab highlight
