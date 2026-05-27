@@ -45,6 +45,28 @@ def save_admin_chat_id(chat_id):
     BOT_SETTINGS_FILE.write_text(json.dumps(cfg, indent=2))
 
 
+
+# === OTP kod qabul qilish (auto-login uchun) ===
+@bot.message_handler(func=lambda m: m.text and re.match(r'^\d{6}$', m.text.strip()))
+def handle_otp(message):
+    """6 xonali OTP kodni qabul qilish."""
+    from pathlib import Path
+    import os
+    DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
+    otp_file = DATA_DIR / "pending_otp.json"
+    
+    if not otp_file.exists():
+        bot.reply_to(message, "⚠️ Hozir OTP kutilmayapti.")
+        return
+    
+    otp_code = message.text.strip()
+    otp_data = {"otp": otp_code, "waiting": False, "timestamp": __import__('time').time()}
+    otp_file.write_text(json.dumps(otp_data))
+    
+    bot.reply_to(message, "✅ OTP qabul qilindi! Login boshlanmoqda...")
+    print(f"[bot] OTP olindi: {otp_code}")
+
+
 @bot.message_handler(commands=["start", "menu"])
 def handle_start(message):
     save_admin_chat_id(message.chat.id)
