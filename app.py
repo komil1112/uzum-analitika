@@ -24,14 +24,19 @@ CORS(app)
 
 
 def load_settings():
-    # Env vars ustunlik qiladi (Railway uchun)
-    token = os.environ.get("UZUM_TOKEN", "")
+    """settings.json dan o'qiydi. Env var faqat zaxira sifatida."""
     xiid = os.environ.get("UZUM_XIID", "")
-    if token and xiid:
-        return {"token": token, "xiid": xiid}
+    
     if SETTINGS_FILE.exists():
-        return json.loads(SETTINGS_FILE.read_text())
-    return {"token": "", "xiid": ""}
+        s = json.loads(SETTINGS_FILE.read_text())
+        token = s.get("token", "")
+        xiid = s.get("xiid", xiid)
+        if token:
+            return {"token": token, "xiid": xiid}
+    
+    # settings.json bo'sh yoki token yo'q bo'lsa env var dan ol
+    token = os.environ.get("UZUM_TOKEN", "")
+    return {"token": token, "xiid": xiid}
 
 
 def save_settings(data):
