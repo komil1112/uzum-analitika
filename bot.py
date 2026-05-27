@@ -138,9 +138,29 @@ def handle_seturl(message):
     bot.reply_to(message, f"✅ Saqlandi: `{url}`", parse_mode="Markdown")
 
 
+@bot.message_handler(commands=["token"])
+def handle_token(message):
+    """Uzum tokenni yangilash: /token <yangi_token>"""
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2 or len(parts[1]) < 50:
+        bot.reply_to(message,
+            "❌ Token qisqa yoki kiritilmadi.\n\n"
+            "Ishlatish: `/token eyJraWQi...`\n\n"
+            "Tokenni Uzum ilovasidan oling:\n"
+            "Ilova → Profil → Uzum ID → Chiqish (oldidan) → Kirish → SMS kod",
+            parse_mode="Markdown")
+        return
+    new_token = parts[1].strip()
+    s = {"token": new_token, "xiid": "9499b4e3-636a-416e-8c9a-30ecfae50e55"}
+    from pathlib import Path
+    import json
+    Path(__file__).parent.joinpath("settings.json").write_text(json.dumps(s, indent=2))
+    bot.reply_to(message, "✅ Uzum token yangilandi! Endi mahsulotlarni yuklash mumkin.")
+
+
 def start_polling():
     print(f"🤖 Bot ishga tushdi | Mini App: {get_webapp_url() or '(sozlanmagan)'}")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    bot.infinity_polling(timeout=60, long_polling_timeout=30)
 
 
 if __name__ == "__main__":
