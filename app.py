@@ -553,26 +553,148 @@ def refresh_endpoint():
     return jsonify({"refreshed": n})
 
 
-def start_background_refresher(interval_hours=6):
-    """Fon rejimida har N soatda kuzatilayotgan mahsulotlarni yangilaydi."""
+def get_color_sales_delta(pid, days=7):
+    """Snapshot delta asosida rang bo'yicha aniq sotuvni hisoblaydi.
+
+    Mantiq: har sku_id uchun sku_stock vaqt seriyasidan
+    faqat kamayishlarni (sotuvlarni) yig'amiz.
+    Restock (stock oshishi) o'tkazib yuboriladi.
+    """
+    con = sqlite3.connect(DB_PATH)
+
+    # Window ichidagi snapshotlar
+    rows = con.execute(
+        "SELECT sku_id, color, size, sku_stock, taken_at "
+        "FROM snapshots "
+        "WHERE product_id=? AND taken_at >= datetime('now', ?) "
+        "ORDER BY sku_id, taken_at ASC",
+        (pid, f"-{days} days"),
+    ).fetchall()
+
+    # Window boshidan oldingi oxirgi snapshot (baseline) — har SKU uchun bittasi
+    baseline_rows = con.execute(
+        "SELECT sku_id, color, size, sku_stock, taken_at "
+        "FROM snapshots "
+        "WHERE product_id=? AND taken_at < datetime('now', ?) "
+        "ORDER BY taken_at DESC LIMIT 200",
+        (pid, f"-{days} days"),
+    ).fetchall()
+
+    # Jami snapshotlar soni
+    total_snaps = (con.execute(
+        "SELECT COUNT(DISTINCT taken_at) FROM snapshots WHERE product_id=?", (pid,)
+    ).fetchone() or [0])[0]
+
+    con.close()
+
+    # Baseline: har SKU uchun eng yangi (DESC tartibda keldi)
+    baseline_by_sku = {}
+    for sku_id, color, size, stock, ts in baseline_rows:
+        if sku_id not in baseline_by_sku:
+            baseline_by_sku[sku_id] = stock
+
+    # Window qatorlarini SKU bo'yicha guruhlaymiz
+    from collections import defaultdict, OrderedDict
+    sku_series = defaultdict(list)
+    sku_info = {}
+    for sku_id, color, size, stock, ts in rows:
+        sku_series[sku_id].append(stock)
+        sku_info[sku_id] = (color or "", size or "")
+
+    if not sku_series:
+        return {
+            "method": "none",
+            "colors": [],
+            "totalSold": 0,
+            "snapshotCount": total_snaps,
+            "days": days,
+            "note": "Snapshot yo'q — kuzatuvga qo'shilgan vaqtdan hisob boshlanadi",
+        }
+
+    results = []
+    total_sold = 0
+
+    for sku_id, series in sku_series.items():
+        color, size = sku_info[sku_id]
+
+        # Baseline mavjud bo'lsa seriyaning boshiga qo'shamiz
+        full = list(series)
+        if sku_id in baseline_by_sku:
+            full = [baseline_by_sku[sku_id]] + full
+
+        # Faqat stock kamayishlari = sotuvlar
+        sold = 0
+        for i in range(1, len(full)):
+            delta = full[i] - full[i - 1]
+            if delta < 0:
+                sold += abs(delta)
+
+        current_stock = series[-1] if series else 0
+        results.append({
+            "skuId": sku_id,
+            "color": color,
+            "size": size,
+            "sold": sold,
+            "currentStock": current_stock,
+        })
+        total_sold += sold
+
+    # Foizlarni qo'shamiz va saralaymiz
+    for r in results:
+        r["soldPct"] = round(r["sold"] / total_sold * 100, 1) if total_sold else 0
+    results.sort(key=lambda x: -x["sold"])
+
+    snap_count = len({r[4] for r in rows})  # distinct taken_at in window
+
+    if total_sold == 0 and snap_count < 2:
+        note = f"Ma'lumot to'planmoqda — {snap_count} ta snapshot (kamida 2 ta kerak)"
+    elif total_sold == 0:
+        note = f"So'nggi {days} kunda sotuv aniqlanmadi ({snap_count} ta o'lchov)"
+    else:
+        note = f"{days} kunlik aniq sotuv — {snap_count} ta o'lchov asosida"
+
+    return {
+        "method": "delta",
+        "colors": results,
+        "totalSold": total_sold,
+        "snapshotCount": snap_count,
+        "totalSnapshotCount": total_snaps,
+        "days": days,
+        "note": note,
+    }
+
+
+@app.route("/api/product/<int:pid>/color-sales")
+def color_sales(pid):
+    """Rang bo'yicha sotuv (snapshot delta asosida)."""
+    days = min(int(request.args.get("days", 7)), 90)
+    result = get_color_sales_delta(pid, days)
+    return jsonify(result)
+
+
+def start_background_refresher():
+    """Snapshot: har 1 soat. Haftalik scraper: har 6 soat (har 6-chi siklda)."""
     import threading
 
     def loop():
         time.sleep(60)  # startup dan keyin 1 daqiqa kutib turish
+        cycle = 0
         while True:
             try:
-                refresh_all_tracked()
+                fetch_weekly = (cycle % 6 == 0)  # har 6 soatda bir marta
+                refresh_all_tracked(fetch_weekly=fetch_weekly)
             except Exception as e:
                 print(f"Background refresh error: {e}")
-            time.sleep(interval_hours * 3600)
+            time.sleep(3600)  # har 1 soatda
+            cycle += 1
 
     t = threading.Thread(target=loop, daemon=True)
     t.start()
-    print(f"⏰ Background refresher har {interval_hours} soatda ishlaydi")
+    print("⏰ Background: snapshot har 1 soat, haftalik har 6 soat")
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    start_background_refresher(6)
+    start_background_refresher()
     print(f"🚀 Uzum Analitika serveri http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)

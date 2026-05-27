@@ -585,9 +585,71 @@ async function loadProduct() {
     var d = await (await fetch(API_BASE + '/api/product/' + pid)).json();
     if (d.error) throw new Error(d.error);
     renderProduct(d);
+    loadColorSales(d.id);  // asinxron — placeholder ni to'ldiradi
   } catch(e) {
     el.innerHTML = '<div class="err-box">Xato: ' + e.message + '</div>';
   }
+}
+
+async function loadColorSales(pid) {
+  try {
+    var d = await (await fetch(API_BASE + '/api/product/' + pid + '/color-sales?days=7')).json();
+    renderColorSales(d);
+  } catch(e) {
+    var el = document.getElementById('color-sales-block');
+    if (el) el.innerHTML = '';
+  }
+}
+
+function renderColorSales(data) {
+  var el = document.getElementById('color-sales-block');
+  if (!el) return;
+
+  var totalSold = data.totalSold || 0;
+  var colors = data.colors || [];
+
+  var html = '<div class="sh">🎨 Rang bo\'yicha sotuv (7 kun)</div>';
+
+  if (!colors.length || totalSold === 0) {
+    html += '<div class="section"><div class="row" style="cursor:default">' +
+      '<div style="color:var(--hint);font-size:13px;line-height:1.5">' +
+        '⏳ ' + esc(data.note || 'Ma\'lumot to\'planmoqda') + '<br>' +
+        '<span style="font-size:11px">Jami snapshot: ' + (data.totalSnapshotCount || 0) + ' ta</span>' +
+      '</div>' +
+    '</div></div>';
+    el.innerHTML = html;
+    return;
+  }
+
+  html += '<div class="section">';
+  colors.forEach(function(c) {
+    var pct = c.soldPct || 0;
+    var barColor = 'var(--btn)';
+    html +=
+      '<div class="row" style="cursor:default">' +
+        '<div class="row-body">' +
+          '<div class="row-title">' + esc(c.color || '—') +
+            (c.size ? ' <span style="color:var(--hint);font-size:12px">/ ' + esc(c.size) + '</span>' : '') +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:5px">' +
+            '<div class="cbar-wrap"><div class="cbar" style="width:' + pct + '%;background:' + barColor + '"></div></div>' +
+            '<span style="font-size:12px;color:var(--hint);white-space:nowrap">' + pct + '%</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="row-right">' +
+          '<div class="row-val pos">+' + c.sold + '</div>' +
+          '<div class="row-lbl">dona</div>' +
+        '</div>' +
+      '</div>';
+  });
+  html += '</div>';
+
+  // Ma'lumot manbai
+  html += '<div style="margin:-4px 12px 12px;font-size:11px;color:var(--hint);text-align:center">' +
+    '✅ Aniq · ' + esc(data.note || '') +
+  '</div>';
+
+  el.innerHTML = html;
 }
 
 function renderProduct(p) {
@@ -632,6 +694,9 @@ function renderProduct(p) {
     });
     html += '</div>';
   }
+
+  // 🎨 Rang bo'yicha sotuv placeholder — loadColorSales() tomonidan to'ldiriladi
+  html += '<div id="color-sales-block"><div class="loader" style="font-size:13px">🎨 Rang sotuvlari yuklanmoqda...</div></div>';
 
   html += '<div class="sh">Variantlar (SKU)</div><div class="section"><div class="tbl-wrap"><table>' +
     '<thead><tr><th>Rang</th><th>O\'lcham</th><th>Narx</th><th>Qoldiq</th></tr></thead><tbody>';
