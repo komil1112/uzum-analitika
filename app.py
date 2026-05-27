@@ -121,6 +121,42 @@ def init_db():
         """)
 
     con.commit()
+
+    # Migration: user_id=0 bo'lgan eski yozuvlarni admin ga ko'chirish
+    # (avvalgi versiyada user_id yo'q edi, hammasi 0 bo'lib saqlangan)
+    orphan_count = con.execute(
+        "SELECT COUNT(*) FROM tracked_products WHERE user_id=0"
+    ).fetchone()[0]
+    if orphan_count > 0:
+        admin_chat_id = 0
+        # authorized_users.json dan admin chat_id ni olamiz
+        auth_file = DATA_DIR / "authorized_users.json"
+        if not auth_file.exists():
+            auth_file = BASE_DIR / "authorized_users.json"
+        if auth_file.exists():
+            try:
+                auth_data = json.loads(auth_file.read_text())
+                admin_chat_id = auth_data.get("admin_chat_id", 0)
+            except Exception:
+                pass
+        # bot_settings.json dan ham tekshiramiz
+        if not admin_chat_id:
+            bot_cfg = DATA_DIR / "bot_settings.json"
+            if not bot_cfg.exists():
+                bot_cfg = BASE_DIR / "bot_settings.json"
+            if bot_cfg.exists():
+                try:
+                    admin_chat_id = json.loads(bot_cfg.read_text()).get("admin_chat_id", 0)
+                except Exception:
+                    pass
+        if admin_chat_id:
+            con.execute(
+                "UPDATE tracked_products SET user_id=? WHERE user_id=0",
+                (admin_chat_id,),
+            )
+            con.commit()
+            print(f"✅ Migration: {orphan_count} ta kuzatuv admin ({admin_chat_id}) ga ko'chirildi")
+
     con.close()
 
 
