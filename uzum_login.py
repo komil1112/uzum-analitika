@@ -1,14 +1,17 @@
 """
-Uzum Market — Telegram bot orqali SMS OTP login.
+Uzum Market — SMS OTP login (Persistent Worker Thread pattern).
+
+Playwright sync API thread'ga bog'langan — shuning uchun bitta
+doimiy worker thread ishlatamiz. Barcha Playwright operatsiyalar
+shu thread ichida bajariladi.
 
 Jarayon:
-  1. start_login(phone)  → brauzer ochadi, telefon kiritadi, SMS yuboradi
-  2. submit_otp(otp)     → OTP kiritadi, login yakunlaydi, session/token saqlaydi
-
-Brauzer start_login() va submit_otp() orasida fonda tirik turadi (max 5 daqiqa).
+  1. start_login(chat_id, phone)  → SMS yuboradi, brauzer kutadi
+  2. submit_otp(chat_id, otp)     → OTP kiritadi, session/token saqlaydi
 """
 import json
 import os
+import queue
 import threading
 import time
 from pathlib import Path
@@ -22,283 +25,35 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 
 OTP_TIMEOUT = 300  # 5 daqiqa
 
-# Faol login sessiyalari: {chat_id: {browser, context, page, expires_at, phone}}
-_active: dict = {}
-_lock = threading.Lock()
+# ── Worker ────────────────────────────────────────────────────────────────────
+_cmd_queue: queue.Queue = queue.Queue()
+_worker_thread = None  # type: threading.Thread
+_worker_lock = threading.Lock()
 
-
-# ── Yordamchi ────────────────────────────────────────────────────────────────
-
-def _load_settings():
-    if SETTINGS_FILE.exists():
-        return json.loads(SETTINGS_FILE.read_text())
-    return {}
+# Faol sessiya holati (worker thread ichida o'qiladi/yoziladi)
+_session_state: dict = {}  # {chat_id, browser, pw, context, page, phone, expires_at}
 
 
 def _save_token(token: str):
-    s = _load_settings()
-    s["token"] = token
+    s = {}
+    if SETTINGS_FILE.exists():
+        try:
+            s = json.loads(SETTINGS_FILE.read_text())
+        except Exception:
+            pass
+    s["token"] = token.strip('"')
     s.setdefault("xiid", "9499b4e3-636a-416e-8c9a-30ecfae50e55")
     SETTINGS_FILE.write_text(json.dumps(s, indent=2))
 
 
-def _cleanup(chat_id: int):
-    """Browser ni yopadi va sessiyani o'chiradi."""
-    with _lock:
-        sess = _active.pop(chat_id, None)
-    if sess:
-        try:
-            sess["browser"].close()
-        except Exception:
-            pass
-
-
-def _auto_expire(chat_id: int, delay: int):
-    """Vaqt tugaganda browser ni avtomatik yopadi."""
-    time.sleep(delay)
-    with _lock:
-        sess = _active.get(chat_id)
-        if sess and time.time() > sess["expires_at"]:
-            _cleanup(chat_id)
-
-
-# ── Asosiy funksiyalar ────────────────────────────────────────────────────────
-
-def start_login(chat_id: int, phone: str) -> dict:
-    """
-    Uzum login modal ochadi, telefon raqamini kiritadi, SMS yuboradi.
-
-    phone: '901234567' yoki '+998901234567' yoki '998901234567'
-
-    Returns:
-        {"ok": True}  — SMS yuborildi, submit_otp() kutilmoqda
-        {"ok": False, "error": "..."}
-    """
-    # Eski sessiyani tozalash
-    _cleanup(chat_id)
-
-    # Telefon raqamni tozalash (+998 prefix olib tashlash)
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    if phone.startswith("+998"):
-        phone = phone[4:]
-    elif phone.startswith("998"):
-        phone = phone[3:]
-    if len(phone) != 9 or not phone.isdigit():
-        return {"ok": False, "error": f"Noto'g'ri telefon: '{phone}' — 9 raqam bo'lishi kerak (901234567)"}
-
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return {"ok": False, "error": "Playwright o'rnatilmagan"}
-
-    try:
-        pw      = sync_playwright().start()
-        browser = pw.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-        )
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            locale="ru-RU",
-        )
-        page = context.new_page()
-
-        page.goto("https://uzum.uz/ru", wait_until="domcontentloaded", timeout=20000)
-        page.wait_for_timeout(2500)
-
-        # Login modal ochish
-        page.click('[data-test-id="button__auth"]')
-        page.wait_for_selector('input[type="tel"]', timeout=8000)
-        page.wait_for_timeout(500)
-
-        # Telefon raqam kiritish
-        tel_input = page.query_selector('input[type="tel"]')
-        if not tel_input:
-            browser.close()
-            pw.stop()
-            return {"ok": False, "error": "Telefon maydoni topilmadi"}
-
-        tel_input.click()
-        tel_input.fill(phone)
-        page.wait_for_timeout(500)
-
-        # "Получить код" tugmasi
-        btn = page.query_selector('.sign-in-phone button.ui-button')
-        if not btn:
-            # Fallback: birinchi submit/button
-            btn = page.query_selector('.sign-in-phone button')
-        if not btn:
-            browser.close()
-            pw.stop()
-            return {"ok": False, "error": "'Получить код' tugmasi topilmadi"}
-
-        btn.click()
-        page.wait_for_timeout(3000)
-
-        # OTP maydoni paydo bo'ldimi?
-        otp_appeared = _wait_for_otp_input(page, timeout=8000)
-        if not otp_appeared:
-            # Xato xabari bormi?
-            err_el = page.query_selector('.sign-in-phone .error, .ui-input__error, [class*="error"]')
-            err_text = err_el.inner_text() if err_el else "OTP maydoni kelmadi"
-            browser.close()
-            pw.stop()
-            return {"ok": False, "error": err_text.strip()[:100]}
-
-        # Sessiyani saqlab qo'yamiz
-        with _lock:
-            _active[chat_id] = {
-                "browser":    browser,
-                "pw":         pw,
-                "context":    context,
-                "page":       page,
-                "phone":      phone,
-                "expires_at": time.time() + OTP_TIMEOUT,
-            }
-
-        # Avtomatik tozalash thread
-        threading.Thread(
-            target=_auto_expire, args=(chat_id, OTP_TIMEOUT), daemon=True
-        ).start()
-
-        return {"ok": True}
-
-    except Exception as e:
-        try:
-            browser.close()
-            pw.stop()
-        except Exception:
-            pass
-        return {"ok": False, "error": str(e)[:200]}
-
-
-def submit_otp(chat_id: int, otp: str) -> dict:
-    """
-    OTP kodni kiritadi va login yakunlaydi.
-
-    Returns:
-        {"ok": True, "token": "..."}
-        {"ok": False, "error": "..."}
-    """
-    otp = otp.strip()
-    if not otp.isdigit() or len(otp) < 4:
-        return {"ok": False, "error": "OTP faqat raqamlardan iborat bo'lishi kerak"}
-
-    with _lock:
-        sess = _active.get(chat_id)
-
-    if not sess:
-        return {"ok": False, "error": "Login sessiyasi topilmadi yoki muddati o'tdi. /login qayta bosing"}
-
-    if time.time() > sess["expires_at"]:
-        _cleanup(chat_id)
-        return {"ok": False, "error": "5 daqiqa o'tdi — /login qayta bosing"}
-
-    page = sess["page"]
-
-    try:
-        # OTP kiritish (6 ta alohida input yoki bitta)
-        otp_inputs = page.query_selector_all('input[type="number"], input[maxlength="1"], .otp-input input')
-
-        if len(otp_inputs) >= 4:
-            # Har bir raqamni alohida kiritish
-            for i, ch in enumerate(otp):
-                if i < len(otp_inputs):
-                    otp_inputs[i].click()
-                    otp_inputs[i].fill(ch)
-                    page.wait_for_timeout(100)
-        else:
-            # Bitta input ga to'liq kiritish
-            otp_input = _find_otp_input(page)
-            if not otp_input:
-                return {"ok": False, "error": "OTP maydoni topilmadi"}
-            otp_input.click()
-            otp_input.fill(otp)
-
-        page.wait_for_timeout(2000)
-
-        # Confirm tugmasini bosish (agar avtomatik yuborilmasa)
-        confirm_btn = page.query_selector(
-            '.sign-in-code button.ui-button, '
-            '.otp-form button[type="submit"], '
-            'button:has-text("Войти"), button:has-text("Подтвердить")'
-        )
-        if confirm_btn and confirm_btn.is_enabled():
-            confirm_btn.click()
-            page.wait_for_timeout(3000)
-
-        # Xato bormi?
-        err_el = page.query_selector('[class*="error"]:not([class*="border"])')
-        if err_el:
-            err_txt = (err_el.inner_text() or '').strip()
-            if err_txt and len(err_txt) > 2:
-                return {"ok": False, "error": f"Uzum xatosi: {err_txt[:80]}"}
-
-        # Token olish
-        token = page.evaluate("() => localStorage.getItem('auth_sdk_access_token')")
-        if not token or len(token.strip('"')) < 50:
-            # Sahifa o'zgardimi — login bo'ldimi?
-            page.wait_for_timeout(3000)
-            token = page.evaluate("() => localStorage.getItem('auth_sdk_access_token')")
-
-        if not token or len(token.strip('"')) < 50:
-            return {"ok": False, "error": "Token olinmadi — OTP noto'g'ri bo'lishi mumkin"}
-
-        token = token.strip('"')
-
-        # Session va token saqlash
-        context = sess["context"]
-        context.storage_state(path=str(SESSION_FILE))
-        _save_token(token)
-
-        _cleanup(chat_id)
-        return {"ok": True, "token": token}
-
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:200]}
-
-
-def cancel_login(chat_id: int):
-    """Faol login sessiyasini bekor qiladi."""
-    _cleanup(chat_id)
-
-
-def has_active_session(chat_id: int) -> bool:
-    with _lock:
-        sess = _active.get(chat_id)
-        if not sess:
-            return False
-        if time.time() > sess["expires_at"]:
-            _cleanup(chat_id)
-            return False
-        return True
-
-
-# ── Ichki yordamchilar ────────────────────────────────────────────────────────
-
-def _wait_for_otp_input(page, timeout: int = 8000) -> bool:
-    """OTP input maydoni paydo bo'lishini kutadi."""
-    start = time.time()
-    while (time.time() - start) * 1000 < timeout:
-        inp = _find_otp_input(page)
-        if inp:
-            return True
-        time.sleep(0.4)
-    return False
-
-
 def _find_otp_input(page):
-    """OTP input ni topadi (turli selectorlar bilan)."""
+    """OTP input elementini topadi."""
     selectors = [
         'input[type="number"]',
         'input[inputmode="numeric"]',
         '.sign-in-code input',
         '[class*="otp"] input',
-        '[class*="code"] input[type="text"]',
+        '[class*="code"] input',
         'input[maxlength="1"]',
         'input[maxlength="6"]',
     ]
@@ -307,3 +62,253 @@ def _find_otp_input(page):
         if el:
             return el
     return None
+
+
+def _wait_otp_input(page, timeout_ms=8000) -> bool:
+    start = time.time()
+    while (time.time() - start) * 1000 < timeout_ms:
+        if _find_otp_input(page):
+            return True
+        time.sleep(0.3)
+    return False
+
+
+def _worker_loop():
+    """Doimiy worker — barcha Playwright operatsiyalar shu yerda."""
+    global _session_state
+
+    pw = None
+    browser = None
+    context = None
+    page = None
+
+    def close_browser():
+        nonlocal pw, browser, context, page
+        for obj in [page, context, browser, pw]:
+            try:
+                if obj:
+                    obj.close() if hasattr(obj, "close") else obj.stop()
+            except Exception:
+                pass
+        pw = browser = context = page = None
+        _session_state.clear()
+
+    while True:
+        try:
+            cmd, args, resp_q = _cmd_queue.get(timeout=60)
+        except queue.Empty:
+            # Sessiya vaqti o'tdimi?
+            if _session_state and time.time() > _session_state.get("expires_at", 0):
+                close_browser()
+            continue
+
+        try:
+            # ── START LOGIN ──────────────────────────────────────────────────
+            if cmd == "start_login":
+                chat_id = args["chat_id"]
+                phone   = args["phone"]
+
+                # Eski brauzer bor bo'lsa yopamiz
+                close_browser()
+
+                from playwright.sync_api import sync_playwright as _spw
+                pw      = _spw().start()
+                browser = pw.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                )
+                context = browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    locale="ru-RU",
+                )
+                page = context.new_page()
+
+                page.goto("https://uzum.uz/ru", wait_until="domcontentloaded", timeout=25000)
+                page.wait_for_timeout(2500)
+
+                # Login modal
+                page.click('[data-test-id="button__auth"]')
+                page.wait_for_selector('input[type="tel"]', timeout=8000)
+                page.wait_for_timeout(500)
+
+                tel = page.query_selector('input[type="tel"]')
+                if not tel:
+                    close_browser()
+                    resp_q.put({"ok": False, "error": "Telefon maydoni topilmadi"})
+                    continue
+
+                tel.click()
+                tel.fill(phone)
+                page.wait_for_timeout(400)
+
+                btn = (
+                    page.query_selector('.sign-in-phone button.ui-button') or
+                    page.query_selector('.sign-in-phone button')
+                )
+                if not btn:
+                    close_browser()
+                    resp_q.put({"ok": False, "error": "'Получить код' tugmasi topilmadi"})
+                    continue
+
+                btn.click()
+                page.wait_for_timeout(3000)
+
+                if not _wait_otp_input(page, timeout_ms=8000):
+                    err_el  = page.query_selector('.sign-in-phone [class*="error"]')
+                    err_txt = err_el.inner_text().strip()[:100] if err_el else "OTP maydoni kelmadi"
+                    close_browser()
+                    resp_q.put({"ok": False, "error": err_txt})
+                    continue
+
+                _session_state = {
+                    "chat_id":    chat_id,
+                    "phone":      phone,
+                    "expires_at": time.time() + OTP_TIMEOUT,
+                }
+                resp_q.put({"ok": True})
+
+            # ── SUBMIT OTP ───────────────────────────────────────────────────
+            elif cmd == "submit_otp":
+                otp = args["otp"]
+
+                if not _session_state or not page:
+                    resp_q.put({"ok": False, "error": "Sessiya yo'q — /login qayta bosing"})
+                    continue
+
+                if time.time() > _session_state.get("expires_at", 0):
+                    close_browser()
+                    resp_q.put({"ok": False, "error": "5 daqiqa o'tdi — /login qayta bosing"})
+                    continue
+
+                # OTP kiritish
+                otp_inputs = page.query_selector_all(
+                    'input[type="number"], input[maxlength="1"], .sign-in-code input'
+                )
+
+                if len(otp_inputs) >= 4:
+                    for i, ch in enumerate(otp):
+                        if i < len(otp_inputs):
+                            otp_inputs[i].click()
+                            otp_inputs[i].fill(ch)
+                            page.wait_for_timeout(80)
+                else:
+                    single = _find_otp_input(page)
+                    if not single:
+                        resp_q.put({"ok": False, "error": "OTP maydoni topilmadi"})
+                        continue
+                    single.click()
+                    single.fill(otp)
+
+                page.wait_for_timeout(2000)
+
+                # Confirm tugmasi
+                confirm = page.query_selector(
+                    '.sign-in-code button.ui-button, '
+                    'button:has-text("Войти"), button:has-text("Подтвердить")'
+                )
+                if confirm and confirm.is_enabled():
+                    confirm.click()
+                    page.wait_for_timeout(3000)
+
+                # Xato bormi?
+                err_el = page.query_selector('.sign-in-code [class*="error"]')
+                if err_el:
+                    err_txt = (err_el.inner_text() or "").strip()
+                    if err_txt and len(err_txt) > 2:
+                        resp_q.put({"ok": False, "error": f"Uzum: {err_txt[:80]}"})
+                        continue
+
+                # Token olish
+                token = page.evaluate("() => localStorage.getItem('auth_sdk_access_token')")
+                if not token or len(token.strip('"')) < 50:
+                    page.wait_for_timeout(3000)
+                    token = page.evaluate("() => localStorage.getItem('auth_sdk_access_token')")
+
+                if not token or len(token.strip('"')) < 50:
+                    resp_q.put({"ok": False, "error": "Token olinmadi — OTP noto'g'ri bo'lishi mumkin"})
+                    continue
+
+                # Session va token saqlash
+                try:
+                    context.storage_state(path=str(SESSION_FILE))
+                except Exception:
+                    pass
+                _save_token(token)
+                close_browser()
+                resp_q.put({"ok": True})
+
+            # ── CANCEL ───────────────────────────────────────────────────────
+            elif cmd == "cancel":
+                close_browser()
+                resp_q.put({"ok": True})
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            try:
+                close_browser()
+            except Exception:
+                pass
+            resp_q.put({"ok": False, "error": str(e)[:200]})
+
+
+def _ensure_worker():
+    global _worker_thread
+    with _worker_lock:
+        if _worker_thread is None or not _worker_thread.is_alive():
+            _worker_thread = threading.Thread(target=_worker_loop, daemon=True, name="uzum-login-worker")
+            _worker_thread.start()
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def start_login(chat_id: int, phone: str) -> dict:
+    """SMS yuboradi. Returns {"ok": True} yoki {"ok": False, "error": "..."}"""
+    phone = phone.strip().replace(" ", "").replace("-", "")
+    if phone.startswith("+998"):
+        phone = phone[4:]
+    elif phone.startswith("998"):
+        phone = phone[3:]
+    if len(phone) != 9 or not phone.isdigit():
+        return {"ok": False, "error": f"Noto'g'ri format: '{phone}' (9 raqam kerak, masalan: 901234567)"}
+
+    _ensure_worker()
+    resp_q: queue.Queue = queue.Queue()
+    _cmd_queue.put(("start_login", {"chat_id": chat_id, "phone": phone}, resp_q))
+    try:
+        return resp_q.get(timeout=45)
+    except queue.Empty:
+        return {"ok": False, "error": "Vaqt tugadi (45s) — internet yoki Uzum muammosi"}
+
+
+def submit_otp(chat_id: int, otp: str) -> dict:
+    """OTP kodni yuboradi. Returns {"ok": True} yoki {"ok": False, "error": "..."}"""
+    otp = otp.strip()
+    if not otp.isdigit() or len(otp) < 4:
+        return {"ok": False, "error": "OTP faqat raqamlardan iborat bo'lishi kerak"}
+
+    _ensure_worker()
+    resp_q: queue.Queue = queue.Queue()
+    _cmd_queue.put(("submit_otp", {"chat_id": chat_id, "otp": otp}, resp_q))
+    try:
+        return resp_q.get(timeout=30)
+    except queue.Empty:
+        return {"ok": False, "error": "Vaqt tugadi (30s)"}
+
+
+def cancel_login(chat_id: int):
+    """Faol login sessiyasini bekor qiladi."""
+    _ensure_worker()
+    resp_q: queue.Queue = queue.Queue()
+    _cmd_queue.put(("cancel", {"chat_id": chat_id}, resp_q))
+    try:
+        resp_q.get(timeout=10)
+    except queue.Empty:
+        pass
+
+
+def has_active_session(chat_id: int) -> bool:
+    return bool(_session_state) and time.time() < _session_state.get("expires_at", 0)
