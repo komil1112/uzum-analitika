@@ -10,7 +10,7 @@ if __name__ == "__main__":
     # Bot
     threading.Thread(target=start_polling, daemon=True).start()
     # Mahsulotlarni yangilash
-    start_background_refresher(6)
+    start_background_refresher()
     # Uzum tokenni avtomatik yangilash
     start_auto_refresher()
 
