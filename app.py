@@ -11,13 +11,16 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "uzum.db"
+
+# DATA_DIR — Railway Volume ulanganda /data, lokallda BASE_DIR
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DB_PATH       = DATA_DIR / "uzum.db"
+SETTINGS_FILE = DATA_DIR / "settings.json"
 
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
 CORS(app)
-
-# ----- Uzum credentials (sessiya tokeni — vaqti tugasa yangilab turish kerak) -----
-SETTINGS_FILE = BASE_DIR / "settings.json"
 
 
 def load_settings():
@@ -138,7 +141,7 @@ def fetch_product(pid):
 def notify_token_expired():
     """Token eskirganda Telegram orqali admin ga xabar yuboradi."""
     try:
-        cfg_file = BASE_DIR / "bot_settings.json"
+        cfg_file = DATA_DIR / "bot_settings.json"
         if not cfg_file.exists():
             return
         cfg = json.loads(cfg_file.read_text())

@@ -11,7 +11,9 @@ from app import fetch_product, store_snapshot
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8863044902:AAFh6Vc3SdKkpZu781n_OvX_19qegDXRoxM")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").rstrip("/")
 
-BOT_SETTINGS_FILE = Path(__file__).parent / "bot_settings.json"
+_DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+BOT_SETTINGS_FILE = _DATA_DIR / "bot_settings.json"
 
 
 def get_webapp_url():
@@ -161,9 +163,7 @@ def handle_token(message):
         return
     new_token = parts[1].strip()
     s = {"token": new_token, "xiid": "9499b4e3-636a-416e-8c9a-30ecfae50e55"}
-    from pathlib import Path
-    import json
-    Path(__file__).parent.joinpath("settings.json").write_text(json.dumps(s, indent=2))
+    (_DATA_DIR / "settings.json").write_text(json.dumps(s, indent=2))
     bot.reply_to(message, "✅ Uzum token yangilandi! Endi mahsulotlarni yuklash mumkin.")
 
 
@@ -176,7 +176,7 @@ def handle_session_upload(message):
     try:
         file_info = bot.get_file(doc.file_id)
         data = bot.download_file(file_info.file_path)
-        Path(__file__).parent.joinpath("uzum_session.json").write_bytes(data)
+        (_DATA_DIR / "uzum_session.json").write_bytes(data)
         bot.reply_to(message, "✅ Session fayl saqlandi! Avto-refresh ishlay boshlaydi.")
         # Darhol bir marta yangilab ko'ramiz
         try:

@@ -14,9 +14,12 @@ from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
-SESSION_FILE = BASE_DIR / "uzum_session.json"
-SETTINGS_FILE = BASE_DIR / "settings.json"
-BOT_SETTINGS_FILE = BASE_DIR / "bot_settings.json"
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+SESSION_FILE      = DATA_DIR / "uzum_session.json"
+SETTINGS_FILE     = DATA_DIR / "settings.json"
+BOT_SETTINGS_FILE = DATA_DIR / "bot_settings.json"
 
 
 def jwt_expiry(token):
