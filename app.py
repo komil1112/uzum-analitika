@@ -206,6 +206,20 @@ def index():
     return send_from_directory(str(BASE_DIR), "index.html")
 
 
+@app.route("/api/upload-session", methods=["POST"])
+def upload_session():
+    """POST /api/upload-session?secret=<SECRET_KEY> — uzum_session.json ni yuklaish."""
+    secret = os.environ.get("TOKEN_UPDATE_SECRET", "")
+    if not secret or request.args.get("secret") != secret:
+        return jsonify({"error": "Ruxsat yo'q"}), 403
+    data = request.get_data()
+    if len(data) < 100:
+        return jsonify({"error": "Fayl bo'sh yoki juda kichik"}), 400
+    session_path = DATA_DIR / "uzum_session.json"
+    session_path.write_bytes(data)
+    return jsonify({"ok": True, "size": len(data), "path": str(session_path)})
+
+
 @app.route("/api/update-token")
 def update_token_via_url():
     """GET /api/update-token?t=<token>&secret=<SECRET_KEY> — tokenni URL orqali yangilash."""
