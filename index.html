@@ -562,9 +562,9 @@ function renderTracked(products) {
     html += '<tr>' +
       '<td style="max-width:170px">' +
         '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px" title="'+fullTitle+'">'+shortTitle+'</div>' +
-        '<a href="https://uzum.uz/ru/product/p-'+p.id+'" target="_blank" onclick="event.stopPropagation()" ' +
-           'style="font-size:11px;color:var(--link);text-decoration:none;display:inline-flex;align-items:center;gap:2px;margin-top:2px">' +
-           '🔗 Uzumda ko\'rish</a>' +
+        '<button onclick="event.stopPropagation();showProduct('+p.id+')" ' +
+           'style="background:none;border:none;font-size:11px;color:var(--link);cursor:pointer;padding:0;margin-top:2px;display:inline-flex;align-items:center;gap:2px">' +
+           '🔍 Tahririga kirish</button>' +
       '</td>' +
       '<td>'+diff(p.today)+'</td>' +
       '<td>'+diff(p.last7d)+'</td>' +
