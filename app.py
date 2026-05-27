@@ -214,6 +214,9 @@ def update_token_via_url():
 
     s = load_settings()
     s["token"] = new_token
+    refresh_token = request.args.get("rt", "").strip()
+    if refresh_token:
+        s["refresh_token"] = refresh_token
     save_settings(s)
 
     # Admin ga xabar

@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+.git
+.gitignore
+*.md
+test_*.py
+find_api.py
+server.log
+product_response.json

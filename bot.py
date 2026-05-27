@@ -167,6 +167,67 @@ def handle_token(message):
     bot.reply_to(message, "✅ Uzum token yangilandi! Endi mahsulotlarni yuklash mumkin.")
 
 
+@bot.message_handler(content_types=["document"])
+def handle_session_upload(message):
+    """uzum_session.json yuklash uchun."""
+    doc = message.document
+    if not doc or not doc.file_name or "session" not in doc.file_name.lower():
+        return
+    try:
+        file_info = bot.get_file(doc.file_id)
+        data = bot.download_file(file_info.file_path)
+        Path(__file__).parent.joinpath("uzum_session.json").write_bytes(data)
+        bot.reply_to(message, "✅ Session fayl saqlandi! Avto-refresh ishlay boshlaydi.")
+        # Darhol bir marta yangilab ko'ramiz
+        try:
+            from token_refresher import refresh_and_save
+            ok = refresh_and_save()
+            if ok:
+                bot.reply_to(message, "✅ Yangi token muvaffaqiyatli olindi!")
+            else:
+                bot.reply_to(message, "⚠️ Token olishda muammo — loglarni tekshiring")
+        except Exception as e:
+            bot.reply_to(message, f"⚠️ Refresh xato: {e}")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Xato: {e}")
+
+
+@bot.message_handler(commands=["status"])
+def handle_status(message):
+    """Token holatini ko'rsatish."""
+    try:
+        import base64
+        import time as _time
+        s_path = Path(__file__).parent / "settings.json"
+        sess_path = Path(__file__).parent / "uzum_session.json"
+        if not s_path.exists():
+            bot.reply_to(message, "❌ settings.json yo'q")
+            return
+        s = json.loads(s_path.read_text())
+        token = s.get("token", "")
+        if not token:
+            bot.reply_to(message, "❌ Token yo'q")
+            return
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload))
+        exp = data.get("exp", 0)
+        left = exp - int(_time.time())
+        hours = left // 3600
+        mins = (left % 3600) // 60
+        sess_ok = "✅" if sess_path.exists() else "❌"
+        bot.reply_to(
+            message,
+            f"📊 *Token holati*\n\n"
+            f"⏳ Eskirishigacha: `{hours}s {mins}d`\n"
+            f"💾 Session fayl: {sess_ok}\n"
+            f"🔄 Avto-refresh: {'yoqilgan' if sess_path.exists() else 'session kerak'}",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        bot.reply_to(message, f"❌ Xato: {e}")
+
+
 def start_polling():
     print(f"🤖 Bot ishga tushdi | Mini App: {get_webapp_url() or '(sozlanmagan)'}")
     bot.infinity_polling(timeout=60, long_polling_timeout=30)
