@@ -189,6 +189,7 @@ textarea.inp { height: 88px; resize: none; font-family: monospace; font-size: 12
 }
 .row-check.checked { background: var(--btn); border-color: var(--btn); }
 .row-check.checked::after { content: '✓'; color: #fff; font-size: 13px; font-weight: 700; }
+.sort-btn.active { background: var(--btn) !important; color: var(--btnt) !important; }
 .tanlash-btn {
   background: none; border: none; color: var(--btn);
   font-size: 14px; font-weight: 600; cursor: pointer;
@@ -693,6 +694,14 @@ async function analyzeCategory() {
 }
 
 var _catProducts = [];
+var _catSort = 'orders'; // 'orders' | 'rorders'
+
+function setCatSort(mode, el) {
+  _catSort = mode;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  rerenderCatRows();
+}
 
 function renderCategory(products) {
   _catProducts = products || [];
@@ -701,17 +710,21 @@ function renderCategory(products) {
     document.getElementById('cat-results-header').style.display = 'none';
     return;
   }
-  _catProducts.sort((a,b) => (b.orders||0)-(a.orders||0));
 
-  var tot  = _catProducts.reduce((s,p) => s+(p.orders||0), 0);
-  var trev = _catProducts.reduce((s,p) => s+(p.orders||0)*(p.price||0), 0);
-  var tst  = _catProducts.reduce((s,p) => s+(p.stock||0), 0);
+  var tot   = _catProducts.reduce((s,p) => s+(p.orders||0), 0);
+  var totR  = _catProducts.reduce((s,p) => s+(p.rOrders||0), 0);
+  var trev  = _catProducts.reduce((s,p) => s+(p.orders||0)*(p.price||0), 0);
+  var tst   = _catProducts.reduce((s,p) => s+(p.stock||0), 0);
 
   var statsHtml = '<div class="sgrid">' +
     '<div class="sbox"><div class="val">'+_catProducts.length+'</div><div class="lbl">Mahsulotlar</div></div>' +
     '<div class="sbox"><div class="val">'+fmtNum(tot)+'</div><div class="lbl">Jami sotuv</div></div>' +
-    '<div class="sbox"><div class="val">'+fmtMoney(trev)+'</div><div class="lbl">Taxminiy tushum</div></div>' +
+    '<div class="sbox green"><div class="val">'+fmtNum(totR)+'</div><div class="lbl">Bu hafta sotildi</div></div>' +
     '<div class="sbox"><div class="val">'+fmtNum(tst)+'</div><div class="lbl">Jami qoldiq</div></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;padding:0 12px 12px">' +
+      '<button class="sort-btn active" onclick="setCatSort(\'orders\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer">📦 Jami sotuv</button>' +
+      '<button class="sort-btn" onclick="setCatSort(\'rorders\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:var(--hint);font-size:13px;font-weight:600;cursor:pointer">🔥 Bu hafta</button>' +
     '</div>';
 
   document.getElementById('cat-results').innerHTML = statsHtml + '<div id="cat-rows-wrap"></div>';
@@ -728,17 +741,32 @@ function renderCategory(products) {
 function rerenderCatRows() {
   var wrap = document.getElementById('cat-rows-wrap');
   if (!wrap) return;
+
+  // Saralash
+  var sorted = _catProducts.slice();
+  if (_catSort === 'rorders') {
+    sorted.sort((a,b) => (b.rOrders||0) - (a.rOrders||0));
+  } else {
+    sorted.sort((a,b) => (b.orders||0) - (a.orders||0));
+  }
+
   var html = '<div class="section">';
-  _catProducts.slice(0, 50).forEach((p, i) => {
+  sorted.slice(0, 50).forEach((p, i) => {
     var isSel = catSel.has(p.id);
+    var origIdx = _catProducts.indexOf(p);
     var leftEl = catSelectMode
       ? '<div class="row-check ' + (isSel ? 'checked' : '') + '" id="chk-cat-' + p.id + '"></div>'
       : (p.photo
           ? '<img class="thumb" src="' + p.photo + '" loading="lazy">'
           : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:18px;font-weight:700">' + (i+1) + '</div>');
     var onclick = catSelectMode
-      ? 'toggleCatRow(' + p.id + ', _catProducts[' + i + '])'
+      ? 'toggleCatRow(' + p.id + ', _catProducts[' + origIdx + '])'
       : 'showProduct(' + p.id + ')';
+
+    var rightVal = _catSort === 'rorders'
+      ? '<div class="row-val pos">+' + fmtNum(p.rOrders) + '</div><div class="row-lbl">bu hafta</div>'
+      : '<div class="row-val">' + fmtNum(p.orders) + '</div><div class="row-lbl">jami</div>';
+
     html +=
       '<div class="row" id="row-cat-' + p.id + '" onclick="' + onclick + '" style="' + (isSel ? 'background:rgba(38,120,182,.08)' : '') + '">' +
         leftEl +
@@ -746,10 +774,7 @@ function rerenderCatRows() {
           '<div class="row-title">' + esc((p.title||'').slice(0, 52)) + '</div>' +
           '<div class="row-sub">' + esc(p.seller||'') + (p.rating ? ' · ★' + (p.rating||0).toFixed(1) : '') + '</div>' +
         '</div>' +
-        '<div class="row-right">' +
-          '<div class="row-val">' + fmtNum(p.orders) + '</div>' +
-          '<div class="row-lbl">sotuv</div>' +
-        '</div>' +
+        '<div class="row-right">' + rightVal + '</div>' +
       '</div>';
   });
   html += '</div>';
