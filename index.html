@@ -599,6 +599,7 @@ function renderProduct(p) {
     (p.photo ? '<img src="'+p.photo+'">' : '') +
     '<div class="hero-info">' +
       '<div class="hero-title">'+esc(p.title||'')+'</div>' +
+      '<a href="https://uzum.uz/ru/product/p-'+p.id+'" target="_blank" style="display:inline-block;margin:6px 0 2px;font-size:13px;color:var(--link);text-decoration:none">🔗 Uzum Market da ko\'rish</a>' +
       '<div class="hero-sub">' +
         (p.category ? '📂 '+esc(p.category)+'<br>' : '') +
         '🏪 '+esc(seller.title||'—')+'<br>' +
