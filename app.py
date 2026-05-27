@@ -411,6 +411,41 @@ def raw_product(pid):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/probe/<int:pid>")
+def probe_endpoints(pid):
+    """Turli endpoint'larni sinab, qaysi biri haftalik sotuv qaytaradi."""
+    candidates = [
+        f"/api/v2/product/{pid}/orders",
+        f"/api/v2/product/{pid}/stats",
+        f"/api/v2/product/{pid}/info",
+        f"/api/v2/product/{pid}/analytics",
+        f"/api/v2/product/{pid}/orders-info",
+        f"/api/v2/product/{pid}/weekly",
+        f"/api/v2/product/{pid}/buyers",
+        f"/api/v2/product/{pid}/sales",
+        f"/api/v1/product/{pid}/orders",
+        f"/api/v1/product/{pid}/stats",
+        f"/api/v1/product/{pid}/weekly-orders",
+        f"/api/v2/product/{pid}/orders-count",
+        f"/api/v2/products/{pid}/orders",
+        f"/api/v2/products/{pid}/stats",
+        f"/api/v2/product/{pid}/popularity",
+        f"/api/v3/product/{pid}",
+    ]
+    results = {}
+    for path in candidates:
+        try:
+            r = requests.get(f"https://api.uzum.uz{path}", headers=uzum_headers(), timeout=5)
+            results[path] = {
+                "status": r.status_code,
+                "length": len(r.text or ""),
+                "preview": (r.text or "")[:200],
+            }
+        except Exception as e:
+            results[path] = {"error": str(e)[:100]}
+    return jsonify(results)
+
+
 @app.route("/api/track", methods=["POST"])
 def track_batch():
     """Tanlangan mahsulotlarni kuzatuvga qo'shish."""
