@@ -197,6 +197,44 @@ def index():
     return send_from_directory(str(BASE_DIR), "index.html")
 
 
+@app.route("/api/update-token")
+def update_token_via_url():
+    """GET /api/update-token?t=<token>&secret=<SECRET_KEY> — tokenni URL orqali yangilash."""
+    secret = os.environ.get("TOKEN_UPDATE_SECRET", "")
+    if not secret:
+        return jsonify({"error": "TOKEN_UPDATE_SECRET env var sozlanmagan"}), 403
+
+    provided = request.args.get("secret", "")
+    if provided != secret:
+        return jsonify({"error": "Noto'g'ri secret"}), 403
+
+    new_token = request.args.get("t", "").strip()
+    if len(new_token) < 50:
+        return jsonify({"error": "Token juda qisqa yoki yo'q"}), 400
+
+    s = load_settings()
+    s["token"] = new_token
+    save_settings(s)
+
+    # Admin ga xabar
+    try:
+        cfg_file = BASE_DIR / "bot_settings.json"
+        if cfg_file.exists():
+            cfg = json.loads(cfg_file.read_text())
+            chat_id = cfg.get("admin_chat_id")
+            bot_token = os.environ.get("BOT_TOKEN", "")
+            if chat_id and bot_token:
+                requests.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": "✅ Uzum token URL orqali yangilandi!", "parse_mode": "Markdown"},
+                    timeout=5,
+                )
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "message": "Token yangilandi"})
+
+
 @app.route("/api/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "POST":
