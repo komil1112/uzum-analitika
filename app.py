@@ -814,6 +814,75 @@ def sales_history():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/product/<int:pid>/sales-history")
+def product_sales_history(pid):
+    """Mahsulot sotuvlari tarixi — har bir stock kamayish alohida event.
+
+    Har consecutive snapshot juftida total_stock kamayganda sotuv deb hisoblanadi.
+    Returns: [{time, qty, isoTime}, ...]  sorted desc.
+    """
+    days = min(int(request.args.get("days", 7)), 90)
+    con = sqlite3.connect(DB_PATH)
+
+    # Window ichidagi snapshotlar (distinct taken_at, MIN total_stock)
+    rows = con.execute(
+        "SELECT taken_at, MIN(total_stock) as ts FROM snapshots "
+        "WHERE product_id=? AND taken_at >= datetime('now', ?) "
+        "GROUP BY taken_at ORDER BY taken_at ASC",
+        (pid, f"-{days} days"),
+    ).fetchall()
+
+    # Baseline (window oldidan oxirgi snapshot)
+    baseline = con.execute(
+        "SELECT total_stock FROM snapshots "
+        "WHERE product_id=? AND taken_at < datetime('now', ?) "
+        "ORDER BY taken_at DESC LIMIT 1",
+        (pid, f"-{days} days"),
+    ).fetchone()
+
+    con.close()
+
+    if not rows:
+        return jsonify({"events": [], "total": 0, "days": days,
+                        "note": "Snapshot yo'q — kuzatuvga qo'shilgan vaqtdan hisob boshlanadi"})
+
+    # Seriyani tuzish
+    times  = [r[0] for r in rows]
+    stocks = [r[1] for r in rows]
+    if baseline:
+        times  = [None] + times
+        stocks = [baseline[0]] + stocks
+
+    events = []
+    for i in range(1, len(stocks)):
+        delta = stocks[i] - stocks[i - 1]
+        if delta < 0:
+            iso = times[i]   # "2025-05-27T14:30:00.123456"
+            # Foydalanuvchiga qulay format
+            try:
+                dt = datetime.fromisoformat(iso)
+                day_str  = dt.strftime("%-d-%b").replace(
+                    "Jan","yan").replace("Feb","fev").replace("Mar","mar").replace(
+                    "Apr","apr").replace("May","may").replace("Jun","iyn").replace(
+                    "Jul","iyl").replace("Aug","avg").replace("Sep","sen").replace(
+                    "Oct","okt").replace("Nov","noy").replace("Dec","dek")
+                time_str = dt.strftime("%H:%M")
+            except Exception:
+                day_str  = (iso or "")[:10]
+                time_str = (iso or "")[11:16]
+            events.append({
+                "isoTime": iso,
+                "day":     day_str,
+                "time":    time_str,
+                "qty":     abs(delta),
+            })
+
+    events.reverse()   # eng yangi birinchi
+    total = sum(e["qty"] for e in events)
+    return jsonify({"events": events, "total": total, "days": days,
+                    "note": f"{days} kun ichida {len(events)} ta sotuv hodisasi"})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     start_background_refresher()
