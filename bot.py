@@ -1,6 +1,7 @@
 """Uzum Analitika — Telegram bot."""
 import json
 import os
+import threading
 from pathlib import Path
 
 import telebot
@@ -14,6 +15,9 @@ WEBAPP_URL = os.environ.get("WEBAPP_URL", "").rstrip("/")
 _DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent)))
 _DATA_DIR.mkdir(parents=True, exist_ok=True)
 BOT_SETTINGS_FILE = _DATA_DIR / "bot_settings.json"
+
+# Login state machine: {chat_id: 'awaiting_phone' | 'awaiting_otp'}
+_login_state: dict = {}
 
 
 def get_webapp_url():
@@ -96,6 +100,73 @@ def handle_product_cmd(message):
     _send_product(message, int(parts[1].strip()))
 
 
+@bot.message_handler(func=lambda m: m.text and m.chat.id in _login_state)
+def handle_login_flow(message):
+    """Login state machine — telefon va OTP qabul qiladi."""
+    chat_id  = message.chat.id
+    state    = _login_state.get(chat_id)
+    text     = message.text.strip()
+
+    if state == "awaiting_phone":
+        msg = bot.reply_to(message, "⏳ SMS yuborilmoqda...")
+        _login_state[chat_id] = "processing"
+
+        def _do_phone():
+            try:
+                from uzum_login import start_login
+                result = start_login(chat_id, text)
+                if result["ok"]:
+                    _login_state[chat_id] = "awaiting_otp"
+                    bot.edit_message_text(
+                        "✅ SMS yuborildi!\n\n"
+                        "📨 *6 xonali kodni yuboring:*\n"
+                        "_(5 daqiqa ichida)_",
+                        chat_id, msg.message_id,
+                        parse_mode="Markdown",
+                    )
+                else:
+                    del _login_state[chat_id]
+                    bot.edit_message_text(
+                        f"❌ Xato: {result['error']}\n\nQayta: /login",
+                        chat_id, msg.message_id,
+                    )
+            except Exception as e:
+                _login_state.pop(chat_id, None)
+                bot.edit_message_text(f"❌ Xato: {e}", chat_id, msg.message_id)
+
+        threading.Thread(target=_do_phone, daemon=True).start()
+
+    elif state == "awaiting_otp":
+        msg = bot.reply_to(message, "⏳ Kod tekshirilmoqda...")
+        _login_state[chat_id] = "processing"
+
+        def _do_otp():
+            try:
+                from uzum_login import submit_otp
+                result = submit_otp(chat_id, text)
+                if result["ok"]:
+                    _login_state.pop(chat_id, None)
+                    bot.edit_message_text(
+                        "✅ *Login muvaffaqiyatli!*\n\n"
+                        "🔑 Token yangilandi.\n"
+                        "📦 Mahsulotlar endi ishlaydi!",
+                        chat_id, msg.message_id,
+                        parse_mode="Markdown",
+                    )
+                else:
+                    # Qayta urinish imkoni
+                    _login_state[chat_id] = "awaiting_otp"
+                    bot.edit_message_text(
+                        f"❌ {result['error']}\n\nKodni qayta yuboring:",
+                        chat_id, msg.message_id,
+                    )
+            except Exception as e:
+                _login_state.pop(chat_id, None)
+                bot.edit_message_text(f"❌ Xato: {e}", chat_id, msg.message_id)
+
+        threading.Thread(target=_do_otp, daemon=True).start()
+
+
 @bot.message_handler(func=lambda m: m.text and m.text.strip().isdigit())
 def handle_plain_id(message):
     _send_product(message, int(message.text.strip()))
@@ -169,6 +240,37 @@ def handle_seturl(message):
     url = parts[1].strip().rstrip("/")
     save_webapp_url(url)
     bot.reply_to(message, f"✅ Saqlandi: `{url}`", parse_mode="Markdown")
+
+
+@bot.message_handler(commands=["login"])
+def handle_login(message):
+    """Uzum ga SMS OTP orqali login: /login"""
+    chat_id = message.chat.id
+    _login_state[chat_id] = "awaiting_phone"
+    bot.reply_to(
+        message,
+        "📱 *Uzum Login*\n\n"
+        "Telefon raqamingizni yuboring:\n"
+        "_(masalan: `901234567` yoki `+998901234567`)_\n\n"
+        "Bekor qilish uchun: /cancel",
+        parse_mode="Markdown",
+    )
+
+
+@bot.message_handler(commands=["cancel"])
+def handle_cancel(message):
+    """Faol login jarayonini bekor qilish."""
+    chat_id = message.chat.id
+    if chat_id in _login_state:
+        del _login_state[chat_id]
+        try:
+            from uzum_login import cancel_login
+            cancel_login(chat_id)
+        except Exception:
+            pass
+        bot.reply_to(message, "❌ Login bekor qilindi.")
+    else:
+        bot.reply_to(message, "Hozir faol jarayon yo'q.")
 
 
 @bot.message_handler(commands=["token"])
@@ -248,6 +350,22 @@ def handle_status(message):
         )
     except Exception as e:
         bot.reply_to(message, f"❌ Xato: {e}")
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "do_login")
+def handle_do_login_callback(call):
+    """Token eskirdi xabardagi 'Login qilish' tugmasi."""
+    chat_id = call.message.chat.id
+    bot.answer_callback_query(call.id)
+    _login_state[chat_id] = "awaiting_phone"
+    bot.send_message(
+        chat_id,
+        "📱 *Uzum Login*\n\n"
+        "Telefon raqamingizni yuboring:\n"
+        "_(masalan: `901234567`)_\n\n"
+        "Bekor qilish uchun: /cancel",
+        parse_mode="Markdown",
+    )
 
 
 def start_polling():

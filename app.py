@@ -166,10 +166,20 @@ def notify_token_expired():
             return
         cfg["last_notified"] = time.time()
         cfg_file.write_text(json.dumps(cfg, indent=2))
-        msg = "⚠️ *Uzum token eskirdi!*\n\nMahsulotlar yangilanmayapti.\n\nuzum.uz ga kiring → F12 → Network → Authorization headerdan yangi tokenni nusxalab `/token <token>` yuboring."
+        msg = (
+            "⚠️ *Uzum token eskirdi!*\n\n"
+            "Mahsulotlar yangilanmayapti.\n\n"
+            "👇 *Qayta login qilish:*\n"
+            "/login — SMS orqali avtomatik login"
+        )
+        markup = {
+            "inline_keyboard": [[
+                {"text": "🔐 Login qilish", "callback_data": "do_login"}
+            ]]
+        }
         requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
+            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown", "reply_markup": markup},
             timeout=5,
         )
     except Exception:
