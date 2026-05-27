@@ -76,19 +76,50 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_product ON snapshots(product_id, taken_at);
 
     CREATE TABLE IF NOT EXISTS tracked_products (
-      product_id INTEGER PRIMARY KEY,
+      product_id INTEGER,
+      user_id INTEGER DEFAULT 0,
       title TEXT,
       photo TEXT,
       added_at TEXT,
-      last_refreshed TEXT
+      last_refreshed TEXT,
+      weekly_buyers INTEGER,
+      weekly_updated_at TEXT,
+      PRIMARY KEY (product_id, user_id)
     );
     """)
-    # Migration: weekly_buyers ustun
+
+    # Migration: eski sxemada user_id yo'q edi (product_id PRIMARY KEY)
     cols = [r[1] for r in con.execute("PRAGMA table_info(tracked_products)").fetchall()]
-    if "weekly_buyers" not in cols:
-        con.execute("ALTER TABLE tracked_products ADD COLUMN weekly_buyers INTEGER")
-    if "weekly_updated_at" not in cols:
-        con.execute("ALTER TABLE tracked_products ADD COLUMN weekly_updated_at TEXT")
+    if "user_id" not in cols:
+        # weekly_buyers/weekly_updated_at bo'lmasa avval qo'shamiz
+        if "weekly_buyers" not in cols:
+            con.execute("ALTER TABLE tracked_products ADD COLUMN weekly_buyers INTEGER")
+        if "weekly_updated_at" not in cols:
+            con.execute("ALTER TABLE tracked_products ADD COLUMN weekly_updated_at TEXT")
+        con.commit()
+        # Yangi sxemaga ko'chiramiz (composite PK)
+        con.executescript("""
+        CREATE TABLE IF NOT EXISTS tracked_products_new (
+          product_id INTEGER,
+          user_id INTEGER DEFAULT 0,
+          title TEXT,
+          photo TEXT,
+          added_at TEXT,
+          last_refreshed TEXT,
+          weekly_buyers INTEGER,
+          weekly_updated_at TEXT,
+          PRIMARY KEY (product_id, user_id)
+        );
+        INSERT OR IGNORE INTO tracked_products_new
+          (product_id, user_id, title, photo, added_at, last_refreshed,
+           weekly_buyers, weekly_updated_at)
+          SELECT product_id, 0, title, photo, added_at, last_refreshed,
+                 weekly_buyers, weekly_updated_at
+          FROM tracked_products;
+        DROP TABLE tracked_products;
+        ALTER TABLE tracked_products_new RENAME TO tracked_products;
+        """)
+
     con.commit()
     con.close()
 
@@ -96,8 +127,8 @@ def init_db():
 init_db()
 
 
-def add_tracking(p):
-    """Mahsulotni avtomatik kuzatuvga qo'shadi (upsert)."""
+def add_tracking(p, user_id: int = 0):
+    """Mahsulotni foydalanuvchi kuzatuviga qo'shadi (upsert)."""
     if not p or not p.get("id"):
         return
     now = datetime.utcnow().isoformat()
@@ -106,13 +137,31 @@ def add_tracking(p):
         photo = (p["photos"][0] or {}).get("link", {}).get("high", "")
     con = sqlite3.connect(DB_PATH)
     con.execute(
-        """INSERT INTO tracked_products (product_id, title, photo, added_at, last_refreshed)
-           VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(product_id) DO UPDATE SET
+        """INSERT INTO tracked_products
+             (product_id, user_id, title, photo, added_at, last_refreshed)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(product_id, user_id) DO UPDATE SET
              title=excluded.title,
              photo=excluded.photo,
              last_refreshed=excluded.last_refreshed""",
-        (p.get("id"), p.get("title"), photo, now, now),
+        (p.get("id"), user_id, p.get("title"), photo, now, now),
+    )
+    con.commit()
+    con.close()
+
+
+def update_product_meta(p):
+    """Background refresh: mavjud barcha foydalanuvchilar uchun metadata yangilaydi."""
+    if not p or not p.get("id"):
+        return
+    now = datetime.utcnow().isoformat()
+    photo = ""
+    if p.get("photos"):
+        photo = (p["photos"][0] or {}).get("link", {}).get("high", "")
+    con = sqlite3.connect(DB_PATH)
+    con.execute(
+        "UPDATE tracked_products SET title=?, photo=?, last_refreshed=? WHERE product_id=?",
+        (p.get("title"), photo, now, p.get("id")),
     )
     con.commit()
     con.close()
@@ -287,6 +336,7 @@ def settings():
 
 @app.route("/api/product/<int:pid>")
 def product(pid):
+    user_id = int(request.args.get("user_id", 0))
     p = fetch_product(pid)
     if not p:
         return jsonify({"error": "Mahsulot topilmadi yoki token eskirgan"}), 404
@@ -311,9 +361,9 @@ def product(pid):
             by_color[color]["stock"] += v["stock"]
             by_color[color]["variants"] += 1
 
-    # Snapshot saqlash + avtomatik kuzatuvga qo'shish
+    # Snapshot saqlash + foydalanuvchi kuzatuviga qo'shish
     store_snapshot(p)
-    add_tracking(p)
+    add_tracking(p, user_id)
 
     # Tarix (oldingi snapshot bilan farq)
     con = sqlite3.connect(DB_PATH)
@@ -426,11 +476,13 @@ def stock_sold_delta(con, pid, days_ago):
 
 @app.route("/api/tracked")
 def list_tracked():
-    """Kuzatilayotgan barcha mahsulotlar va davriy sotuv farqi."""
+    """Kuzatilayotgan mahsulotlar — faqat shu foydalanuvchiniki."""
+    user_id = int(request.args.get("user_id", 0))
     con = sqlite3.connect(DB_PATH)
     tracked = con.execute(
         "SELECT product_id, title, photo, added_at, last_refreshed, weekly_buyers, weekly_updated_at "
-        "FROM tracked_products ORDER BY last_refreshed DESC"
+        "FROM tracked_products WHERE user_id=? ORDER BY last_refreshed DESC",
+        (user_id,),
     ).fetchall()
 
     products = []
@@ -535,8 +587,10 @@ def weekly_batch():
 
 @app.route("/api/track", methods=["POST"])
 def track_batch():
-    """Tanlangan mahsulotlarni kuzatuvga qo'shish."""
-    ids = (request.json or {}).get("ids", [])
+    """Tanlangan mahsulotlarni foydalanuvchi kuzatuviga qo'shish."""
+    body    = request.json or {}
+    ids     = body.get("ids", [])
+    user_id = int(body.get("user_id", 0))
     if not isinstance(ids, list):
         return jsonify({"error": "ids ro'yxat bo'lishi kerak"}), 400
     added = 0
@@ -545,7 +599,7 @@ def track_batch():
             p = fetch_product(int(pid))
             if p:
                 store_snapshot(p)
-                add_tracking(p)
+                add_tracking(p, user_id)
                 added += 1
             time.sleep(0.15)
         except Exception as e:
@@ -555,8 +609,9 @@ def track_batch():
 
 @app.route("/api/untrack/<int:pid>", methods=["DELETE"])
 def untrack(pid):
+    user_id = int(request.args.get("user_id", 0))
     con = sqlite3.connect(DB_PATH)
-    con.execute("DELETE FROM tracked_products WHERE product_id=?", (pid,))
+    con.execute("DELETE FROM tracked_products WHERE product_id=? AND user_id=?", (pid, user_id))
     con.commit()
     con.close()
     return jsonify({"ok": True})
@@ -568,7 +623,7 @@ def refresh_all_tracked(fetch_weekly=True):
     fetch_weekly=True bo'lsa, "Bu hafta X kishi" ma'lumotini ham Playwright orqali oladi.
     """
     con = sqlite3.connect(DB_PATH)
-    ids = [r[0] for r in con.execute("SELECT product_id FROM tracked_products").fetchall()]
+    ids = [r[0] for r in con.execute("SELECT DISTINCT product_id FROM tracked_products").fetchall()]
     con.close()
 
     print(f"🔄 Avto-yangilash: {len(ids)} ta mahsulot")
@@ -578,7 +633,7 @@ def refresh_all_tracked(fetch_weekly=True):
             p = fetch_product(pid)
             if p:
                 store_snapshot(p)
-                add_tracking(p)
+                update_product_meta(p)  # barcha foydalanuvchilar uchun metadata yangilanadi
                 refreshed += 1
             time.sleep(0.2)
         except Exception as e:

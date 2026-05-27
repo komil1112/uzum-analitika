@@ -370,9 +370,14 @@ tr:last-child td { border-bottom: none; }
 var API_BASE = (window.location.protocol === 'file:') ? 'http://localhost:8080' : '';
 
 // ── Telegram init ──
+var _tgUserId = 0;
 (function() {
   var tg = window.Telegram && window.Telegram.WebApp;
-  if (tg) { tg.ready(); tg.expand(); }
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    _tgUserId = (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || 0;
+  }
   var pid = new URLSearchParams(window.location.search).get('pid');
   if (pid) {
     gotoPage('product', document.querySelectorAll('.bnav-item')[1]);
@@ -594,7 +599,7 @@ async function deleteSelected() {
   if (!trackedSel.size) return;
   var ids = [...trackedSel];
   for (var id of ids) {
-    await fetch(API_BASE + '/api/untrack/' + id, { method: 'DELETE' });
+    await fetch(API_BASE + '/api/untrack/' + id + '?user_id=' + _tgUserId, { method: 'DELETE' });
   }
   toast('🗑 ' + ids.length + ' ta o\'chirildi');
   cancelSelect();
@@ -629,7 +634,7 @@ async function trackSelected() {
     var res = await fetch(API_BASE + '/api/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: ids })
+      body: JSON.stringify({ ids: ids, user_id: _tgUserId })
     });
     var d = await res.json();
     toast('✅ ' + d.added + ' ta kuzatuvga qo\'shildi');
@@ -648,7 +653,7 @@ async function loadTracked() {
   var el = document.getElementById('tracked-results');
   el.innerHTML = '<div class="loader">Yuklanmoqda...</div>';
   try {
-    var d = await (await fetch(API_BASE + '/api/tracked')).json();
+    var d = await (await fetch(API_BASE + '/api/tracked?user_id=' + _tgUserId)).json();
     renderTracked(d.products);
   } catch(e) {
     el.innerHTML = '<div class="err-box">Xato: ' + e.message + '</div>';
@@ -671,7 +676,7 @@ async function refreshTracked() {
 
 async function untrack(pid, title) {
   if (!confirm('"' + title.slice(0,40) + '" ni kuzatishdan olib tashlaysizmi?')) return;
-  await fetch(API_BASE + '/api/untrack/' + pid, { method: 'DELETE' });
+  await fetch(API_BASE + '/api/untrack/' + pid + '?user_id=' + _tgUserId, { method: 'DELETE' });
   toast('🗑 Kuzatuvdan olib tashlandi');
   loadTracked();
 }
@@ -773,7 +778,7 @@ async function loadProduct() {
   var el = document.getElementById('product-result');
   el.innerHTML = '<div class="loader">Yuklanmoqda...</div>';
   try {
-    var d = await (await fetch(API_BASE + '/api/product/' + pid)).json();
+    var d = await (await fetch(API_BASE + '/api/product/' + pid + '?user_id=' + _tgUserId)).json();
     if (d.error) throw new Error(d.error);
     renderProduct(d);
     loadColorSales(d.id);  // asinxron — placeholder ni to'ldiradi
