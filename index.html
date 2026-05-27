@@ -542,6 +542,9 @@ function renderTracked(products) {
         '<div class="row-body">' +
           '<div class="row-title">' + esc(p.title || '').slice(0, 52) + '</div>' +
           '<div class="row-sub">Jami: ' + fmtNum(p.ordersNow) + ' • Qoldiq: ' + fmtNum(p.stockNow) + '</div>' +
+          '<a href="https://uzum.uz/ru/product/p-'+p.id+'" target="_blank" onclick="event.stopPropagation()" ' +
+             'style="font-size:11px;color:var(--link);text-decoration:none;display:inline-flex;align-items:center;gap:2px;margin-top:3px">' +
+             '🔗 Uzumda ko\'rish</a>' +
         '</div>' +
         '<div class="row-right">' +
           rightVal +
@@ -554,8 +557,15 @@ function renderTracked(products) {
   html += '<div class="sh">Davr bo\'yicha sotuv</div><div class="section"><div class="tbl-wrap"><table>' +
     '<thead><tr><th>Mahsulot</th><th>Bugun</th><th>7 kun</th><th>30 kun</th><th></th></tr></thead><tbody>';
   products.forEach(p => {
+    var shortTitle = esc((p.title||'').slice(0,35));
+    var fullTitle  = esc(p.title||'');
     html += '<tr>' +
-      '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc((p.title||'').slice(0,40))+'</td>' +
+      '<td style="max-width:170px">' +
+        '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px" title="'+fullTitle+'">'+shortTitle+'</div>' +
+        '<a href="https://uzum.uz/ru/product/p-'+p.id+'" target="_blank" onclick="event.stopPropagation()" ' +
+           'style="font-size:11px;color:var(--link);text-decoration:none;display:inline-flex;align-items:center;gap:2px;margin-top:2px">' +
+           '🔗 Uzumda ko\'rish</a>' +
+      '</td>' +
       '<td>'+diff(p.today)+'</td>' +
       '<td>'+diff(p.last7d)+'</td>' +
       '<td>'+diff(p.last30d)+'</td>' +
