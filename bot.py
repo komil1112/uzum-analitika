@@ -1,6 +1,7 @@
 """Uzum Analitika — Telegram bot."""
 import json
 import os
+import re
 import threading
 from pathlib import Path
 
