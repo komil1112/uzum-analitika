@@ -35,8 +35,17 @@ def fmt_num(n):
     return f"{int(n):,}".replace(",", " ")
 
 
+def save_admin_chat_id(chat_id):
+    cfg = {}
+    if BOT_SETTINGS_FILE.exists():
+        cfg = json.loads(BOT_SETTINGS_FILE.read_text())
+    cfg["admin_chat_id"] = chat_id
+    BOT_SETTINGS_FILE.write_text(json.dumps(cfg, indent=2))
+
+
 @bot.message_handler(commands=["start", "menu"])
 def handle_start(message):
+    save_admin_chat_id(message.chat.id)
     url = get_webapp_url()
     markup = InlineKeyboardMarkup()
     if url:

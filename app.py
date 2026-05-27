@@ -124,10 +124,42 @@ def extract_variant_label(sku, characteristics):
 
 
 def fetch_product(pid):
-    r = requests.get(f"https://api.uzum.uz/api/v2/product/{pid}", headers=uzum_headers(), timeout=10)
-    if r.status_code != 200:
+    try:
+        r = requests.get(f"https://api.uzum.uz/api/v2/product/{pid}", headers=uzum_headers(), timeout=10)
+        if r.status_code != 200 or not r.text.strip():
+            if r.status_code in (401, 403) or not r.text.strip():
+                notify_token_expired()
+            return None
+        return r.json().get("payload", {}).get("data")
+    except Exception:
         return None
-    return r.json().get("payload", {}).get("data")
+
+
+def notify_token_expired():
+    """Token eskirganda Telegram orqali admin ga xabar yuboradi."""
+    try:
+        cfg_file = BASE_DIR / "bot_settings.json"
+        if not cfg_file.exists():
+            return
+        cfg = json.loads(cfg_file.read_text())
+        chat_id = cfg.get("admin_chat_id")
+        bot_token = os.environ.get("BOT_TOKEN", "")
+        if not chat_id or not bot_token:
+            return
+        # Oxirgi ogohlantirish vaqtini tekshir (har 30 daqiqada bir marta)
+        last = cfg.get("last_notified", 0)
+        if time.time() - last < 1800:
+            return
+        cfg["last_notified"] = time.time()
+        cfg_file.write_text(json.dumps(cfg, indent=2))
+        msg = "⚠️ *Uzum token eskirdi!*\n\nMahsulotlar yangilanmayapti.\n\nuzum.uz ga kiring → F12 → Network → Authorization headerdan yangi tokenni nusxalab `/token <token>` yuboring."
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
+            timeout=5,
+        )
+    except Exception:
+        pass
 
 
 def store_snapshot(p):
