@@ -162,6 +162,39 @@ textarea.inp { height: 88px; resize: none; font-family: monospace; font-size: 12
 .loader { padding: 40px; text-align: center; color: var(--hint); font-size: 14px; }
 .err-box { margin: 0 12px 12px; background: rgba(255,59,48,.1); color: #ff3b30; border-radius: 12px; padding: 14px; font-size: 13px; }
 
+/* ── Select mode ── */
+.sel-bar {
+  position: fixed; bottom: calc(60px + env(safe-area-inset-bottom)); left: 0; right: 0;
+  background: var(--btn); color: var(--btnt);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; z-index: 99;
+  transform: translateY(100%); transition: transform .2s;
+}
+.sel-bar.show { transform: translateY(0); }
+.sel-bar-txt { font-size: 14px; font-weight: 600; }
+.sel-bar-btns { display: flex; gap: 10px; }
+.sel-bar-btn {
+  background: rgba(255,255,255,.2); color: var(--btnt);
+  border: none; border-radius: 8px; padding: 7px 14px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.sel-bar-btn.cancel { background: rgba(255,255,255,.1); }
+.row.sel-active { cursor: pointer; }
+.row.sel-active:active { background: var(--bg2); }
+.row-check {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--hint); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.row-check.checked { background: var(--btn); border-color: var(--btn); }
+.row-check.checked::after { content: '✓'; color: #fff; font-size: 13px; font-weight: 700; }
+.tanlash-btn {
+  background: none; border: none; color: var(--btn);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  padding: 4px 8px; margin-left: auto;
+}
+
 /* ── Table (desktop / horizontal scroll) ── */
 .tbl-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 420px; }
@@ -174,9 +207,21 @@ tr:last-child td { border-bottom: none; }
 
 <!-- ── KUZATUV ── -->
 <div id="pg-tracked" class="page active">
-  <div class="sh">Avtomatik kuzatuv</div>
+  <div class="sh" style="display:flex;align-items:center">
+    <span>Avtomatik kuzatuv</span>
+    <button class="tanlash-btn" id="tracked-sel-btn" onclick="toggleTrackedSelect()">Tanlash</button>
+  </div>
   <div id="tracked-results"></div>
   <button class="btn secondary" onclick="refreshTracked()" id="refresh-btn">🔄 Hozir yangilash</button>
+</div>
+
+<!-- Selection action bar -->
+<div class="sel-bar" id="sel-bar">
+  <span class="sel-bar-txt" id="sel-bar-txt">0 ta tanlandi</span>
+  <div class="sel-bar-btns">
+    <button class="sel-bar-btn cancel" onclick="cancelSelect()">Bekor</button>
+    <button class="sel-bar-btn" id="sel-bar-action" onclick="selBarAction()">O'chirish</button>
+  </div>
 </div>
 
 <!-- ── MAHSULOT ── -->
@@ -210,6 +255,10 @@ tr:last-child td { border-bottom: none; }
   <div class="prog" id="progress" style="display:none"><div class="prog-bar" id="progress-bar"></div></div>
   <button class="btn" onclick="analyzeCategory()">Tahlil qilish</button>
   <div id="cat-status"></div>
+  <div id="cat-results-header" style="display:none" class="sh" style="display:flex;align-items:center">
+    <span id="cat-results-title">Natijalar</span>
+    <button class="tanlash-btn" id="cat-sel-btn" onclick="toggleCatSelect()">Tanlash</button>
+  </div>
   <div id="cat-results"></div>
 </div>
 
@@ -301,6 +350,121 @@ function toast(msg) {
 }
 
 // ═══════════════════════════════════════
+//  SELECTION STATE
+// ═══════════════════════════════════════
+var trackedSelectMode = false;
+var trackedSel = new Set();
+var catSelectMode = false;
+var catSel = new Map(); // id -> product obj
+var selBarMode = ''; // 'delete' | 'track'
+
+function updateSelBar() {
+  var bar = document.getElementById('sel-bar');
+  var txt = document.getElementById('sel-bar-txt');
+  var btn = document.getElementById('sel-bar-action');
+  var count = selBarMode === 'delete' ? trackedSel.size : catSel.size;
+  if (count === 0) { bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  txt.textContent = count + ' ta tanlandi';
+  if (selBarMode === 'delete') {
+    btn.textContent = '🗑 O\'chirish';
+    btn.style.background = 'rgba(255,59,48,.35)';
+  } else {
+    btn.textContent = '📊 Kuzatuvga';
+    btn.style.background = 'rgba(255,255,255,.2)';
+  }
+}
+
+function cancelSelect() {
+  if (trackedSelectMode) {
+    trackedSelectMode = false; trackedSel.clear();
+    document.getElementById('tracked-sel-btn').textContent = 'Tanlash';
+    loadTracked();
+  }
+  if (catSelectMode) {
+    catSelectMode = false; catSel.clear();
+    document.getElementById('cat-sel-btn').textContent = 'Tanlash';
+    rerenderCatRows();
+  }
+  document.getElementById('sel-bar').classList.remove('show');
+}
+
+async function selBarAction() {
+  if (selBarMode === 'delete') await deleteSelected();
+  else await trackSelected();
+}
+
+function toggleTrackedSelect() {
+  trackedSelectMode = !trackedSelectMode;
+  trackedSel.clear();
+  selBarMode = 'delete';
+  document.getElementById('tracked-sel-btn').textContent = trackedSelectMode ? 'Bekor' : 'Tanlash';
+  if (!trackedSelectMode) document.getElementById('sel-bar').classList.remove('show');
+  loadTracked();
+}
+
+function toggleTrackedRow(id) {
+  if (trackedSel.has(id)) trackedSel.delete(id);
+  else trackedSel.add(id);
+  var chk = document.getElementById('chk-' + id);
+  if (chk) chk.classList.toggle('checked', trackedSel.has(id));
+  var row = document.getElementById('row-' + id);
+  if (row) row.style.background = trackedSel.has(id) ? 'rgba(var(--btn-rgb,38,120,182),.08)' : '';
+  updateSelBar();
+}
+
+async function deleteSelected() {
+  if (!trackedSel.size) return;
+  var ids = [...trackedSel];
+  for (var id of ids) {
+    await fetch(API_BASE + '/api/untrack/' + id, { method: 'DELETE' });
+  }
+  toast('🗑 ' + ids.length + ' ta o\'chirildi');
+  cancelSelect();
+  loadTracked();
+}
+
+function toggleCatSelect() {
+  catSelectMode = !catSelectMode;
+  catSel.clear();
+  selBarMode = 'track';
+  document.getElementById('cat-sel-btn').textContent = catSelectMode ? 'Bekor' : 'Tanlash';
+  if (!catSelectMode) document.getElementById('sel-bar').classList.remove('show');
+  rerenderCatRows();
+}
+
+function toggleCatRow(id, product) {
+  if (catSel.has(id)) catSel.delete(id);
+  else catSel.set(id, product);
+  var chk = document.getElementById('chk-cat-' + id);
+  if (chk) chk.classList.toggle('checked', catSel.has(id));
+  var row = document.getElementById('row-cat-' + id);
+  if (row) row.style.background = catSel.has(id) ? 'rgba(38,120,182,.08)' : '';
+  updateSelBar();
+}
+
+async function trackSelected() {
+  if (!catSel.size) return;
+  var ids = [...catSel.keys()];
+  var btn = document.getElementById('sel-bar-action');
+  btn.disabled = true; btn.textContent = '⏳ Yuklanmoqda...';
+  try {
+    var res = await fetch(API_BASE + '/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids })
+    });
+    var d = await res.json();
+    toast('✅ ' + d.added + ' ta kuzatuvga qo\'shildi');
+    cancelSelect();
+  } catch(e) {
+    toast('❌ ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+// ═══════════════════════════════════════
 //  KUZATUV
 // ═══════════════════════════════════════
 async function loadTracked() {
@@ -357,15 +521,20 @@ function renderTracked(products) {
 
   html += '<div class="sh">Mahsulotlar</div><div class="section">';
   products.forEach(p => {
+    var isSel = trackedSel.has(p.id);
+    var leftEl = trackedSelectMode
+      ? '<div class="row-check ' + (isSel ? 'checked' : '') + '" id="chk-' + p.id + '"></div>'
+      : (p.photo ? '<img class="thumb" src="' + p.photo + '" loading="lazy">' : '<div class="thumb"></div>');
+    var onclick = trackedSelectMode ? 'toggleTrackedRow(' + p.id + ')' : 'showProduct(' + p.id + ')';
     html +=
-      '<div class="row" onclick="showProduct('+p.id+')">' +
-        (p.photo ? '<img class="thumb" src="'+p.photo+'" loading="lazy">' : '<div class="thumb"></div>') +
+      '<div class="row" id="row-' + p.id + '" onclick="' + onclick + '" style="' + (isSel ? 'background:rgba(38,120,182,.08)' : '') + '">' +
+        leftEl +
         '<div class="row-body">' +
-          '<div class="row-title">'+esc(p.title||'').slice(0,52)+'</div>' +
-          '<div class="row-sub">Jami: '+fmtNum(p.ordersNow)+' • Qoldiq: '+fmtNum(p.stockNow)+'</div>' +
+          '<div class="row-title">' + esc(p.title || '').slice(0, 52) + '</div>' +
+          '<div class="row-sub">Jami: ' + fmtNum(p.ordersNow) + ' • Qoldiq: ' + fmtNum(p.stockNow) + '</div>' +
         '</div>' +
         '<div class="row-right">' +
-          '<div class="row-val">'+diff(p.today)+'</div>' +
+          '<div class="row-val">' + diff(p.today) + '</div>' +
           '<div class="row-lbl">bugun</div>' +
         '</div>' +
       '</div>';
@@ -523,40 +692,68 @@ async function analyzeCategory() {
   }
 }
 
+var _catProducts = [];
+
 function renderCategory(products) {
-  var el = document.getElementById('cat-results');
-  if (!products || !products.length) { el.innerHTML = '<div class="empty">Hech narsa topilmadi</div>'; return; }
-  products.sort((a,b) => (b.orders||0)-(a.orders||0));
+  _catProducts = products || [];
+  if (!_catProducts.length) {
+    document.getElementById('cat-results').innerHTML = '<div class="empty">Hech narsa topilmadi</div>';
+    document.getElementById('cat-results-header').style.display = 'none';
+    return;
+  }
+  _catProducts.sort((a,b) => (b.orders||0)-(a.orders||0));
 
-  var tot  = products.reduce((s,p) => s+(p.orders||0), 0);
-  var trev = products.reduce((s,p) => s+(p.orders||0)*(p.price||0), 0);
-  var tst  = products.reduce((s,p) => s+(p.stock||0), 0);
+  var tot  = _catProducts.reduce((s,p) => s+(p.orders||0), 0);
+  var trev = _catProducts.reduce((s,p) => s+(p.orders||0)*(p.price||0), 0);
+  var tst  = _catProducts.reduce((s,p) => s+(p.stock||0), 0);
 
-  var html = '<div class="sgrid">' +
-    '<div class="sbox"><div class="val">'+products.length+'</div><div class="lbl">Mahsulotlar</div></div>' +
+  var statsHtml = '<div class="sgrid">' +
+    '<div class="sbox"><div class="val">'+_catProducts.length+'</div><div class="lbl">Mahsulotlar</div></div>' +
     '<div class="sbox"><div class="val">'+fmtNum(tot)+'</div><div class="lbl">Jami sotuv</div></div>' +
     '<div class="sbox"><div class="val">'+fmtMoney(trev)+'</div><div class="lbl">Taxminiy tushum</div></div>' +
     '<div class="sbox"><div class="val">'+fmtNum(tst)+'</div><div class="lbl">Jami qoldiq</div></div>' +
     '</div>';
 
-  html += '<div class="sh">Top mahsulotlar</div><div class="section">';
-  products.slice(0, 30).forEach((p, i) => {
+  document.getElementById('cat-results').innerHTML = statsHtml + '<div id="cat-rows-wrap"></div>';
+
+  var hdr = document.getElementById('cat-results-header');
+  hdr.style.display = 'flex';
+  hdr.style.alignItems = 'center';
+  document.getElementById('cat-results-title').textContent = 'Top mahsulotlar';
+  document.getElementById('cat-sel-btn').textContent = catSelectMode ? 'Bekor' : 'Tanlash';
+
+  rerenderCatRows();
+}
+
+function rerenderCatRows() {
+  var wrap = document.getElementById('cat-rows-wrap');
+  if (!wrap) return;
+  var html = '<div class="section">';
+  _catProducts.slice(0, 50).forEach((p, i) => {
+    var isSel = catSel.has(p.id);
+    var leftEl = catSelectMode
+      ? '<div class="row-check ' + (isSel ? 'checked' : '') + '" id="chk-cat-' + p.id + '"></div>'
+      : (p.photo
+          ? '<img class="thumb" src="' + p.photo + '" loading="lazy">'
+          : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:18px;font-weight:700">' + (i+1) + '</div>');
+    var onclick = catSelectMode
+      ? 'toggleCatRow(' + p.id + ', _catProducts[' + i + '])'
+      : 'showProduct(' + p.id + ')';
     html +=
-      '<div class="row" onclick="showProduct('+p.id+')">' +
-        (p.photo ? '<img class="thumb" src="'+p.photo+'" loading="lazy">' : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:18px;font-weight:700">'+(i+1)+'</div>') +
+      '<div class="row" id="row-cat-' + p.id + '" onclick="' + onclick + '" style="' + (isSel ? 'background:rgba(38,120,182,.08)' : '') + '">' +
+        leftEl +
         '<div class="row-body">' +
-          '<div class="row-title">'+esc((p.title||'').slice(0,52))+'</div>' +
-          '<div class="row-sub">'+esc(p.seller||'')+(p.rating?' · ★'+(p.rating||0).toFixed(1):'')+'</div>' +
+          '<div class="row-title">' + esc((p.title||'').slice(0, 52)) + '</div>' +
+          '<div class="row-sub">' + esc(p.seller||'') + (p.rating ? ' · ★' + (p.rating||0).toFixed(1) : '') + '</div>' +
         '</div>' +
         '<div class="row-right">' +
-          '<div class="row-val">'+fmtNum(p.orders)+'</div>' +
+          '<div class="row-val">' + fmtNum(p.orders) + '</div>' +
           '<div class="row-lbl">sotuv</div>' +
         '</div>' +
       '</div>';
   });
   html += '</div>';
-
-  el.innerHTML = html;
+  wrap.innerHTML = html;
 }
 
 // ── XSS himoyasi ──

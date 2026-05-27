@@ -321,8 +321,6 @@ def products_batch():
             p = fetch_product(int(pid))
             if not p:
                 continue
-            store_snapshot(p)
-            add_tracking(p)
             chars = p.get("characteristics", [])
             stock_by_color = {}
             for sku in p.get("skuList", []):
@@ -395,6 +393,26 @@ def list_tracked():
     con.close()
     products.sort(key=lambda x: (x.get("today") or 0), reverse=True)
     return jsonify({"products": products, "count": len(products)})
+
+
+@app.route("/api/track", methods=["POST"])
+def track_batch():
+    """Tanlangan mahsulotlarni kuzatuvga qo'shish."""
+    ids = (request.json or {}).get("ids", [])
+    if not isinstance(ids, list):
+        return jsonify({"error": "ids ro'yxat bo'lishi kerak"}), 400
+    added = 0
+    for pid in ids[:50]:
+        try:
+            p = fetch_product(int(pid))
+            if p:
+                store_snapshot(p)
+                add_tracking(p)
+                added += 1
+            time.sleep(0.15)
+        except Exception as e:
+            print(f"Track error {pid}: {e}")
+    return jsonify({"added": added})
 
 
 @app.route("/api/untrack/<int:pid>", methods=["DELETE"])
