@@ -80,9 +80,21 @@ def refresh_token_once():
                 print("[refresher] ❌ localStorage'da token yo'q — sessiya tugagan.")
                 notify_admin(
                     "⚠️ *Uzum sessiyasi tugadi!*\n\n"
-                    "Mac'da `python setup_login.py` ishlatib qayta login qiling, "
-                    "so'ng `uzum_session.json` ni Railway'ga yuklang."
+                    "Avtomatik login uchun Telegram botga OTP kod yuboring."
                 )
+                # Avtomatik login qilish
+                try:
+                    from auto_login import do_login
+                    print("[refresher] 🔄 Avtomatik login boshlanmoqda...")
+                    if do_login():
+                        # Login muvaffaqiyatli — tokenni qayta o'qish
+                        token = page.evaluate("() => localStorage.getItem('auth_sdk_access_token')")
+                        if token:
+                            token = token.strip('"').strip()
+                            context.storage_state(path=str(SESSION_FILE))
+                            return token
+                except Exception as e:
+                    print(f"[refresher] Auto-login xatosi: {e}")
                 return None
 
             # Tirnoqlarni olib tashlash
