@@ -355,6 +355,46 @@ def products_batch():
     return jsonify({"products": results})
 
 
+def stock_sold_delta(con, pid, days_ago):
+    """Stock kamayishi asosida sotuvni hisoblaydi (orders_amount o'rniga).
+
+    Uzum API ordersAmount ni real vaqtda yangilamaydi, lekin total_stock
+    har snaphotda yangilanadi. Shuning uchun stock delta = sotuvlar.
+    """
+    # Window ichidagi snapshotlar (distinct taken_at bo'yicha total_stock)
+    rows = con.execute(
+        "SELECT taken_at, MIN(total_stock) as ts FROM snapshots "
+        "WHERE product_id=? AND taken_at >= datetime('now', ?) "
+        "GROUP BY taken_at ORDER BY taken_at ASC",
+        (pid, f"-{days_ago} days"),
+    ).fetchall()
+
+    if not rows:
+        return None
+
+    # Window boshidan oldingi oxirgi snapshot (baseline)
+    baseline = con.execute(
+        "SELECT total_stock FROM snapshots "
+        "WHERE product_id=? AND taken_at < datetime('now', ?) "
+        "ORDER BY taken_at DESC LIMIT 1",
+        (pid, f"-{days_ago} days"),
+    ).fetchone()
+
+    stocks = [r[1] for r in rows]
+    if baseline:
+        stocks = [baseline[0]] + stocks
+
+    if len(stocks) < 2:
+        return None
+
+    sold = 0
+    for i in range(1, len(stocks)):
+        delta = stocks[i] - stocks[i - 1]
+        if delta < 0:
+            sold += abs(delta)
+    return sold
+
+
 @app.route("/api/tracked")
 def list_tracked():
     """Kuzatilayotgan barcha mahsulotlar va davriy sotuv farqi."""
@@ -375,17 +415,10 @@ def list_tracked():
             continue
         orders_now, stock_now, last_seen = latest
 
-        # N kun oldingi snapshot
-        def orders_at(days_ago):
-            row = con.execute(
-                "SELECT orders_amount FROM snapshots WHERE product_id=? AND datetime(taken_at) <= datetime('now', ?) ORDER BY taken_at DESC LIMIT 1",
-                (pid, f"-{days_ago} days"),
-            ).fetchone()
-            return row[0] if row else None
-
-        o_1d = orders_at(1)
-        o_7d = orders_at(7)
-        o_30d = orders_at(30)
+        # Stock delta asosida sotuvlar (ordersAmount real vaqtda yangilanmaydi)
+        s_1d  = stock_sold_delta(con, pid, 1)
+        s_7d  = stock_sold_delta(con, pid, 7)
+        s_30d = stock_sold_delta(con, pid, 30)
 
         products.append({
             "id": pid,
@@ -395,9 +428,9 @@ def list_tracked():
             "lastSeen": last_seen,
             "ordersNow": orders_now,
             "stockNow": stock_now,
-            "today": (orders_now - o_1d) if o_1d is not None else None,
-            "last7d": (orders_now - o_7d) if o_7d is not None else None,
-            "last30d": (orders_now - o_30d) if o_30d is not None else None,
+            "today": s_1d,
+            "last7d": s_7d,
+            "last30d": s_30d,
             "weeklyBuyers": weekly_buyers,
             "weeklyUpdatedAt": weekly_updated_at,
         })
