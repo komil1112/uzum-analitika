@@ -462,10 +462,10 @@ def weekly_batch():
     if not isinstance(ids, list) or not ids:
         return jsonify({"error": "ids ro'yxat bo'lishi kerak"}), 400
     try:
-        from weekly_scraper import fetch_weekly_batch
-        # Max 30 ta - juda ko'p bo'lsa vaqt oladi
-        ids_int = [int(x) for x in ids[:30]]
-        data = fetch_weekly_batch(ids_int, delay=0.3)
+        from weekly_scraper import fetch_weekly_parallel
+        # Max 50 ta — 3 ta parallel brauzer bilan ~1.5 daqiqa
+        ids_int = [int(x) for x in ids[:50]]
+        data = fetch_weekly_parallel(ids_int, workers=3, delay=0.3)
         return jsonify({"weekly": {str(k): v for k, v in data.items()}})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -526,9 +526,9 @@ def refresh_all_tracked(fetch_weekly=True):
     # Haftalik xaridorlar sonini ham yangilaymiz (sekinroq)
     if fetch_weekly and ids:
         try:
-            from weekly_scraper import fetch_weekly_batch
-            print(f"📊 Haftalik ma'lumot yuklanmoqda ({len(ids)} ta)...")
-            weekly_data = fetch_weekly_batch(ids, delay=0.3)
+            from weekly_scraper import fetch_weekly_parallel
+            print(f"📊 Haftalik ma'lumot yuklanmoqda ({len(ids)} ta, 3 parallel)...")
+            weekly_data = fetch_weekly_parallel(ids, workers=3, delay=0.3)
             now = datetime.utcnow().isoformat()
             con = sqlite3.connect(DB_PATH)
             for pid, count in weekly_data.items():

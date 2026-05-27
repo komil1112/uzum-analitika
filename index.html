@@ -696,6 +696,8 @@ async function analyzeCategory() {
     setTimeout(() => { prog.style.display = 'none'; bar.style.width = '0'; }, 400);
     document.getElementById('cat-status').innerHTML = '';
     renderCategory(data.products);
+    // Avto-enrich: haftalik raqamlarni darhol fonda yuklab boshlaymiz
+    setTimeout(() => { enrichWeekly(true); }, 300);
   } catch(e) {
     prog.style.display = 'none';
     document.getElementById('cat-status').innerHTML = '<div class="err-box">Xato: '+e.message+'</div>';
@@ -703,7 +705,7 @@ async function analyzeCategory() {
 }
 
 var _catProducts = [];
-var _catSort = 'orders'; // 'orders' | 'rorders'
+var _catSort = 'weekly'; // 'weekly' | 'orders' | 'rorders' — default: haftalik (asosiy maqsad)
 
 function setCatSort(mode, el) {
   _catSort = mode;
@@ -732,10 +734,10 @@ function renderCategory(products) {
     '<div class="sbox"><div class="val">'+fmtNum(tst)+'</div><div class="lbl">Jami qoldiq</div></div>' +
     '</div>' +
     '<div style="display:flex;gap:8px;padding:0 12px 8px">' +
-      '<button class="sort-btn active" onclick="setCatSort(\'orders\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer">📦 Jami sotuv</button>' +
-      '<button class="sort-btn" onclick="setCatSort(\'weekly\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:var(--hint);font-size:13px;font-weight:600;cursor:pointer">🔥 Bu hafta</button>' +
+      '<button class="sort-btn ' + (_catSort==='weekly'?'active':'') + '" onclick="setCatSort(\'weekly\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:' + (_catSort==='weekly'?'var(--text)':'var(--hint)') + ';font-size:13px;font-weight:600;cursor:pointer">🔥 Bu hafta</button>' +
+      '<button class="sort-btn ' + (_catSort==='orders'?'active':'') + '" onclick="setCatSort(\'orders\',this)" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--bg);color:' + (_catSort==='orders'?'var(--text)':'var(--hint)') + ';font-size:13px;font-weight:600;cursor:pointer">📦 Jami sotuv</button>' +
     '</div>' +
-    '<button class="btn secondary" onclick="enrichWeekly()" id="enrich-btn" style="margin:0 12px 12px">📊 Aniq haftalik sonni yuklash (sekin)</button>';
+    '<div id="enrich-status" style="margin:0 12px 12px;padding:10px;background:var(--bg);border-radius:10px;font-size:13px;color:var(--hint);text-align:center">⏳ Haftalik raqamlar yuklanmoqda...</div>';
 
   document.getElementById('cat-results').innerHTML = statsHtml + '<div id="cat-rows-wrap"></div>';
 
@@ -748,12 +750,15 @@ function renderCategory(products) {
   rerenderCatRows();
 }
 
-async function enrichWeekly() {
-  var btn = document.getElementById('enrich-btn');
-  if (!btn) return;
-  var ids = _catProducts.slice(0, 30).map(p => p.id);
-  btn.disabled = true;
-  btn.textContent = '⏳ Yuklanmoqda... (~' + (ids.length * 4) + ' soniya)';
+async function enrichWeekly(silent) {
+  var ids = _catProducts.slice(0, 50).map(p => p.id);
+  if (!ids.length) return;
+  var status = document.getElementById('enrich-status');
+  var startedAt = Date.now();
+  var estSec = Math.ceil(ids.length / 3 * 4); // 3 parallel, ~4s har biri
+  if (status) {
+    status.innerHTML = '⏳ Haftalik raqamlar yuklanmoqda — ~' + estSec + ' soniya (' + ids.length + ' ta)';
+  }
   try {
     var res = await fetch(API_BASE + '/api/weekly', {
       method: 'POST',
@@ -763,21 +768,23 @@ async function enrichWeekly() {
     var d = await res.json();
     if (d.error) throw new Error(d.error);
     var weekly = d.weekly || {};
+    var got = 0;
     _catProducts.forEach(p => {
-      if (weekly[p.id] !== undefined) p.weeklyBuyers = weekly[p.id];
+      if (weekly[p.id] !== undefined) { p.weeklyBuyers = weekly[p.id]; got++; }
     });
-    toast('✅ Haftalik raqamlar yuklandi');
-    // Avtomatik haftalik sortga o'tkazamiz
+    var took = Math.round((Date.now() - startedAt) / 1000);
+    if (status) {
+      status.innerHTML = '✅ ' + got + ' ta mahsulot — haftalik sotuv bo\'yicha saralanadi (' + took + 's)';
+      status.style.color = 'var(--text)';
+    }
+    if (!silent) toast('✅ Haftalik yuklandi');
     _catSort = 'weekly';
-    document.querySelectorAll('.sort-btn').forEach((b, i) => {
-      b.classList.toggle('active', i === 1);
-    });
     rerenderCatRows();
   } catch(e) {
-    toast('❌ ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '📊 Aniq haftalik sonni yuklash (sekin)';
+    if (status) {
+      status.innerHTML = '❌ Xato: ' + e.message + ' — qayta urinish uchun "Tahlil"ni bosing';
+    }
+    if (!silent) toast('❌ ' + e.message);
   }
 }
 
