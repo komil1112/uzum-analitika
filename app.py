@@ -398,6 +398,19 @@ def list_tracked():
     return jsonify({"products": products, "count": len(products)})
 
 
+@app.route("/api/raw/<int:pid>")
+def raw_product(pid):
+    """Debug: Uzum API dan kelgan to'liq xom javob."""
+    try:
+        r = requests.get(
+            f"https://api.uzum.uz/api/v2/product/{pid}",
+            headers=uzum_headers(), timeout=10,
+        )
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/track", methods=["POST"])
 def track_batch():
     """Tanlangan mahsulotlarni kuzatuvga qo'shish."""
