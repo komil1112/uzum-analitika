@@ -499,8 +499,12 @@ function renderSalesHistory(data) {
     html += '<div class="sh-day-group">' +
       '<div class="sh-day-label">📅 ' + esc(day) + ' — ' + dayTotal + ' dona</div>';
     byDay[day].forEach(function(e) {
+      var colorLabel = e.color ? '🎨 ' + esc(e.color) + (e.size ? ' / ' + esc(e.size) : '') : '';
       html += '<div class="sh-event">' +
-        '<span class="sh-event-time">⏰ ' + esc(e.time) + '</span>' +
+        '<div>' +
+          '<div class="sh-event-time">⏰ ' + esc(e.time) + '</div>' +
+          (colorLabel ? '<div style="font-size:12px;color:var(--hint);margin-top:2px">' + colorLabel + '</div>' : '') +
+        '</div>' +
         '<span class="sh-event-qty">−' + e.qty + ' dona</span>' +
       '</div>';
     });

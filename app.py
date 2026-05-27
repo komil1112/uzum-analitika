@@ -816,29 +816,30 @@ def sales_history():
 
 @app.route("/api/product/<int:pid>/sales-history")
 def product_sales_history(pid):
-    """Mahsulot sotuvlari tarixi — har bir stock kamayish alohida event.
+    """Mahsulot sotuvlari tarixi — har SKU uchun stock kamayish alohida event.
 
-    Har consecutive snapshot juftida total_stock kamayganda sotuv deb hisoblanadi.
-    Returns: [{time, qty, isoTime}, ...]  sorted desc.
+    Har sku_id bo'yicha consecutive snapshot juftida sku_stock kamayganda
+    sotuv deb hisoblanadi. Rang va o'lcham ham qaytariladi.
+    Returns: [{time, qty, color, size, isoTime}, ...]  sorted desc.
     """
     days = min(int(request.args.get("days", 7)), 90)
     con = sqlite3.connect(DB_PATH)
 
-    # Window ichidagi snapshotlar (distinct taken_at, MIN total_stock)
+    # Window ichidagi snapshotlar — har SKU uchun
     rows = con.execute(
-        "SELECT taken_at, MIN(total_stock) as ts FROM snapshots "
+        "SELECT sku_id, color, size, sku_stock, taken_at FROM snapshots "
         "WHERE product_id=? AND taken_at >= datetime('now', ?) "
-        "GROUP BY taken_at ORDER BY taken_at ASC",
+        "ORDER BY sku_id, taken_at ASC",
         (pid, f"-{days} days"),
     ).fetchall()
 
-    # Baseline (window oldidan oxirgi snapshot)
-    baseline = con.execute(
-        "SELECT total_stock FROM snapshots "
+    # Baseline — har SKU uchun window oldidan oxirgi qiymat
+    baseline_rows = con.execute(
+        "SELECT sku_id, color, size, sku_stock FROM snapshots "
         "WHERE product_id=? AND taken_at < datetime('now', ?) "
-        "ORDER BY taken_at DESC LIMIT 1",
+        "ORDER BY taken_at DESC LIMIT 500",
         (pid, f"-{days} days"),
-    ).fetchone()
+    ).fetchall()
 
     con.close()
 
@@ -846,38 +847,57 @@ def product_sales_history(pid):
         return jsonify({"events": [], "total": 0, "days": days,
                         "note": "Snapshot yo'q — kuzatuvga qo'shilgan vaqtdan hisob boshlanadi"})
 
-    # Seriyani tuzish
-    times  = [r[0] for r in rows]
-    stocks = [r[1] for r in rows]
-    if baseline:
-        times  = [None] + times
-        stocks = [baseline[0]] + stocks
+    # Baseline: har SKU uchun eng yangi (DESC keldi)
+    baseline_by_sku = {}
+    for sku_id, color, size, stock in baseline_rows:
+        if sku_id not in baseline_by_sku:
+            baseline_by_sku[sku_id] = (stock, color or "", size or "")
+
+    # SKU bo'yicha guruhlab seriya tuzish
+    from collections import defaultdict
+    sku_series = defaultdict(list)   # sku_id -> [(taken_at, stock)]
+    sku_info   = {}                  # sku_id -> (color, size)
+    for sku_id, color, size, stock, taken_at in rows:
+        sku_series[sku_id].append((taken_at, stock))
+        sku_info[sku_id] = (color or "", size or "")
+
+    def fmt_dt(iso):
+        try:
+            dt = datetime.fromisoformat(iso)
+            months = ["","yan","fev","mar","apr","may","iyn","iyl","avg","sen","okt","noy","dek"]
+            return f"{dt.day}-{months[dt.month]}", dt.strftime("%H:%M")
+        except Exception:
+            return (iso or "")[:10], (iso or "")[11:16]
 
     events = []
-    for i in range(1, len(stocks)):
-        delta = stocks[i] - stocks[i - 1]
-        if delta < 0:
-            iso = times[i]   # "2025-05-27T14:30:00.123456"
-            # Foydalanuvchiga qulay format
-            try:
-                dt = datetime.fromisoformat(iso)
-                day_str  = dt.strftime("%-d-%b").replace(
-                    "Jan","yan").replace("Feb","fev").replace("Mar","mar").replace(
-                    "Apr","apr").replace("May","may").replace("Jun","iyn").replace(
-                    "Jul","iyl").replace("Aug","avg").replace("Sep","sen").replace(
-                    "Oct","okt").replace("Nov","noy").replace("Dec","dek")
-                time_str = dt.strftime("%H:%M")
-            except Exception:
-                day_str  = (iso or "")[:10]
-                time_str = (iso or "")[11:16]
-            events.append({
-                "isoTime": iso,
-                "day":     day_str,
-                "time":    time_str,
-                "qty":     abs(delta),
-            })
+    for sku_id, series in sku_series.items():
+        color, size = sku_info[sku_id]
 
-    events.reverse()   # eng yangi birinchi
+        # Baseline qo'shish
+        full = list(series)
+        if sku_id in baseline_by_sku:
+            bl_stock, bl_color, bl_size = baseline_by_sku[sku_id]
+            full = [(None, bl_stock)] + full
+            if not color:
+                color = bl_color
+            if not size:
+                size = bl_size
+
+        for i in range(1, len(full)):
+            delta = full[i][1] - full[i - 1][1]
+            if delta < 0:
+                iso = full[i][0]
+                day_str, time_str = fmt_dt(iso) if iso else ("—", "—")
+                events.append({
+                    "isoTime": iso or "",
+                    "day":     day_str,
+                    "time":    time_str,
+                    "qty":     abs(delta),
+                    "color":   color,
+                    "size":    size,
+                })
+
+    events.sort(key=lambda e: e["isoTime"], reverse=True)
     total = sum(e["qty"] for e in events)
     return jsonify({"events": events, "total": total, "days": days,
                     "note": f"{days} kun ichida {len(events)} ta sotuv hodisasi"})
