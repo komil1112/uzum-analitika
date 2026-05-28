@@ -248,7 +248,8 @@ def _worker_loop():
                         payload_b64 += '=' * pad
                     payload = json.loads(_b64.b64decode(payload_b64))
                     expires_at = payload.get('exp', 0)
-                    print(f"🔑 Token olingan, expires_at={expires_at}, refresh={'bor' if refresh_token else 'yo'q'}")
+                    has_refresh = "bor" if refresh_token else "yoq"
+                    print(f"🔑 Token olingan, expires_at={expires_at}, refresh={has_refresh}")
                 except Exception as ex:
                     print(f"JWT parse xato (normal): {ex}")
 
