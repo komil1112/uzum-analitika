@@ -34,7 +34,7 @@ _worker_lock = threading.Lock()
 _session_state: dict = {}  # {chat_id, browser, pw, context, page, phone, expires_at}
 
 
-def _save_token(token: str):
+def _save_token(token: str, refresh_token: str = "", expires_at: int = 0):
     s = {}
     if SETTINGS_FILE.exists():
         try:
@@ -43,6 +43,10 @@ def _save_token(token: str):
             pass
     s["token"] = token.strip('"')
     s.setdefault("xiid", "9499b4e3-636a-416e-8c9a-30ecfae50e55")
+    if refresh_token:
+        s["refresh_token"] = refresh_token.strip('"')
+    if expires_at:
+        s["token_expires_at"] = expires_at
     SETTINGS_FILE.write_text(json.dumps(s, indent=2))
 
 
@@ -231,12 +235,29 @@ def _worker_loop():
                     resp_q.put({"ok": False, "error": "Token olinmadi — OTP noto'g'ri bo'lishi mumkin"})
                     continue
 
+                # Refresh token va boshqa auth ma'lumotlarini olish
+                refresh_token = page.evaluate("() => localStorage.getItem('auth_sdk_refresh_token') || ''")
+                expires_at = 0
+                try:
+                    # JWT payload dan expiry vaqtini o'qiymiz
+                    import base64 as _b64
+                    raw = token.strip('"')
+                    payload_b64 = raw.split('.')[1] if '.' in raw else ''
+                    pad = 4 - len(payload_b64) % 4
+                    if pad != 4:
+                        payload_b64 += '=' * pad
+                    payload = json.loads(_b64.b64decode(payload_b64))
+                    expires_at = payload.get('exp', 0)
+                    print(f"🔑 Token olingan, expires_at={expires_at}, refresh={'bor' if refresh_token else 'yo'q'}")
+                except Exception as ex:
+                    print(f"JWT parse xato (normal): {ex}")
+
                 # Session va token saqlash
                 try:
                     context.storage_state(path=str(SESSION_FILE))
                 except Exception:
                     pass
-                _save_token(token)
+                _save_token(token, refresh_token or "", expires_at)
                 close_browser()
                 resp_q.put({"ok": True})
 

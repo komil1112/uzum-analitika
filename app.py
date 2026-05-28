@@ -825,8 +825,130 @@ def color_sales(pid):
     return jsonify(result)
 
 
+def try_auto_refresh_token() -> bool:
+    """Refresh token yordamida yangi access token olishga harakat qiladi.
+    Muvaffaqiyatli bo'lsa True, bo'lmasa False qaytaradi."""
+    try:
+        s = load_settings()
+        refresh_token = s.get("refresh_token", "")
+        if not refresh_token:
+            print("⚠️ Refresh token yo'q — qayta login kerak")
+            return False
+
+        # Uzum auth SDK refresh endpoint
+        # JWT iss (issuer) dan bazani aniqlaymiz
+        base_url = "https://id.uzum.uz"
+        try:
+            import base64 as _b64
+            raw = s.get("token", "").strip('"')
+            if '.' in raw:
+                payload_b64 = raw.split('.')[1]
+                pad = 4 - len(payload_b64) % 4
+                if pad != 4:
+                    payload_b64 += '=' * pad
+                payload = json.loads(_b64.b64decode(payload_b64))
+                iss = payload.get("iss", "")
+                if iss.startswith("http"):
+                    from urllib.parse import urlparse
+                    parsed = urlparse(iss)
+                    base_url = f"{parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            pass
+
+        endpoints = [
+            f"{base_url}/api/oauth/v1/token",
+            f"{base_url}/oauth/token",
+            f"{base_url}/api/v1/token",
+            "https://auth.uzum.uz/api/oauth/v1/token",
+            "https://auth.uzum.uz/oauth/token",
+        ]
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "UzumMarket/2.5.0",
+        }
+        body = f"grant_type=refresh_token&refresh_token={refresh_token.strip(chr(34))}"
+
+        for endpoint in endpoints:
+            try:
+                r = requests.post(endpoint, data=body, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    new_token = data.get("access_token") or data.get("token", "")
+                    new_refresh = data.get("refresh_token", "")
+                    if new_token and len(new_token) > 50:
+                        s["token"] = new_token
+                        if new_refresh:
+                            s["refresh_token"] = new_refresh
+                        # Yangi expiry vaqtini hisoblash
+                        expires_in = data.get("expires_in", 14400)  # default 4 soat
+                        s["token_expires_at"] = int(time.time()) + int(expires_in)
+                        save_settings(s)
+                        print(f"✅ Token avtomatik yangilandi (endpoint: {endpoint})")
+                        # Admin ga xabar
+                        _notify_token_refreshed()
+                        return True
+            except Exception as ex:
+                continue
+
+        print("❌ Barcha refresh endpoint'lar ishlamadi")
+        return False
+
+    except Exception as e:
+        print(f"Auto refresh xato: {e}")
+        return False
+
+
+def _notify_token_refreshed():
+    """Token muvaffaqiyatli yangilanganda admin ga xabar."""
+    try:
+        cfg_file = DATA_DIR / "bot_settings.json"
+        if not cfg_file.exists():
+            return
+        cfg = json.loads(cfg_file.read_text())
+        chat_id = cfg.get("admin_chat_id")
+        bot_token = os.environ.get("BOT_TOKEN", "")
+        if not chat_id or not bot_token:
+            return
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": "🔄 Uzum token avtomatik yangilandi ✅"},
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def _is_token_expiring_soon(threshold_minutes: int = 60) -> bool:
+    """Token kelgusi N daqiqada eskiradimi?"""
+    try:
+        s = load_settings()
+        # settings.json dan expires_at
+        expires_at = s.get("token_expires_at", 0)
+        if expires_at:
+            return time.time() > expires_at - threshold_minutes * 60
+
+        # Yoki JWT dan o'qiymiz
+        import base64 as _b64
+        raw = s.get("token", "").strip('"')
+        if '.' in raw:
+            payload_b64 = raw.split('.')[1]
+            pad = 4 - len(payload_b64) % 4
+            if pad != 4:
+                payload_b64 += '=' * pad
+            payload = json.loads(_b64.b64decode(payload_b64))
+            exp = payload.get("exp", 0)
+            if exp:
+                return time.time() > exp - threshold_minutes * 60
+    except Exception:
+        pass
+    return False
+
+
 def start_background_refresher():
-    """Snapshot: har 1 soat. Haftalik scraper: har 6 soat (har 6-chi siklda)."""
+    """Snapshot: har 1 soat. Haftalik scraper: har 6 soat.
+    Token yangilash: expiry ga 60 daqiqa qolganda avtomatik."""
     import threading
 
     def loop():
@@ -834,6 +956,14 @@ def start_background_refresher():
         cycle = 0
         while True:
             try:
+                # Token 1 soatdan kam qolganda yangilash
+                if _is_token_expiring_soon(threshold_minutes=70):
+                    print("⏳ Token tez eskiradi — avtomatik yangilanmoqda...")
+                    success = try_auto_refresh_token()
+                    if not success:
+                        print("⚠️ Token yangilanmadi — notify_token_expired chaqirilmoqda")
+                        notify_token_expired()
+
                 fetch_weekly = (cycle % 6 == 0)  # har 6 soatda bir marta
                 refresh_all_tracked(fetch_weekly=fetch_weekly)
             except Exception as e:
@@ -843,7 +973,7 @@ def start_background_refresher():
 
     t = threading.Thread(target=loop, daemon=True)
     t.start()
-    print("⏰ Background: snapshot har 1 soat, haftalik har 6 soat")
+    print("⏰ Background: snapshot har 1 soat, haftalik har 6 soat, token auto-refresh yoqilgan")
 
 
 
