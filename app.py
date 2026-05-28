@@ -168,9 +168,7 @@ def add_tracking(p, user_id: int = 0):
     if not p or not p.get("id"):
         return
     now = datetime.utcnow().isoformat()
-    photo = ""
-    if p.get("photos"):
-        photo = (p["photos"][0] or {}).get("link", {}).get("high", "")
+    photo = extract_photo(p)
     con = sqlite3.connect(DB_PATH)
     con.execute(
         """INSERT INTO tracked_products
@@ -191,9 +189,7 @@ def update_product_meta(p):
     if not p or not p.get("id"):
         return
     now = datetime.utcnow().isoformat()
-    photo = ""
-    if p.get("photos"):
-        photo = (p["photos"][0] or {}).get("link", {}).get("high", "")
+    photo = extract_photo(p)
     con = sqlite3.connect(DB_PATH)
     con.execute(
         "UPDATE tracked_products SET title=?, photo=?, last_refreshed=? WHERE product_id=?",
@@ -220,6 +216,34 @@ def extract_variant_label(sku, characteristics):
         else:
             size = val.get("title", "")
     return color, size
+
+
+def extract_photo(p):
+    """Uzum mahsulot rasmini oladi: photos[0].photo['240'].high
+    Uzum API tuzilmasi: photos=[{photo:{'120':{high,low}, '240':{...}, ...}}]"""
+    try:
+        photos = p.get("photos") or []
+        if not photos:
+            return ""
+        ph = (photos[0] or {}).get("photo") or {}
+        # Eski format bilan ham ishlasin (link)
+        if not ph:
+            return (photos[0] or {}).get("link", {}).get("high", "")
+        # O'rta o'lcham afzal: 240 → 480 → 540 → birinchi mavjud
+        for size in ("240", "480", "540", "120", "720", "800"):
+            if size in ph:
+                node = ph[size] or {}
+                url = node.get("high") or node.get("low") or ""
+                if url:
+                    return url
+        # Hech biri bo'lmasa birinchi mavjudni ol
+        for node in ph.values():
+            url = (node or {}).get("high") or (node or {}).get("low") or ""
+            if url:
+                return url
+        return ""
+    except Exception:
+        return ""
 
 
 def fetch_product(pid):
@@ -428,7 +452,7 @@ def product(pid):
         "variants": variants,
         "byColor": by_color,
         "history": history,
-        "photo": (p.get("photos") or [{}])[0].get("link", {}).get("high", "") if p.get("photos") else "",
+        "photo": extract_photo(p),
     })
 
 
@@ -462,7 +486,7 @@ def products_batch():
                 "price": (p.get("skuList") or [{}])[0].get("purchasePrice", 0) if p.get("skuList") else 0,
                 "seller": (p.get("seller") or {}).get("title", ""),
                 "colors": stock_by_color,
-                "photo": (p.get("photos") or [{}])[0].get("link", {}).get("high", "") if p.get("photos") else "",
+                "photo": extract_photo(p),
             })
             time.sleep(0.15)  # rate limit
         except Exception as e:
@@ -555,6 +579,32 @@ def list_tracked():
     con.close()
     products.sort(key=lambda x: (x.get("weeklyBuyers") or x.get("today") or 0), reverse=True)
     return jsonify({"products": products, "count": len(products)})
+
+
+@app.route("/api/backfill-photos", methods=["POST", "GET"])
+def backfill_photos():
+    """Bir martalik: photo bo'sh bo'lgan kuzatuvdagi mahsulotlarga rasm to'ldiradi."""
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute(
+        "SELECT DISTINCT product_id FROM tracked_products WHERE photo IS NULL OR photo=''"
+    ).fetchall()
+    con.close()
+    updated, failed = 0, 0
+    for (pid,) in rows:
+        p = fetch_product(int(pid))
+        photo = extract_photo(p) if p else ""
+        if photo:
+            con = sqlite3.connect(DB_PATH)
+            con.execute(
+                "UPDATE tracked_products SET photo=? WHERE product_id=?",
+                (photo, pid),
+            )
+            con.commit()
+            con.close()
+            updated += 1
+        else:
+            failed += 1
+    return jsonify({"updated": updated, "failed": failed, "total": len(rows)})
 
 
 @app.route("/api/raw/<int:pid>")
