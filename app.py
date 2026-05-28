@@ -150,8 +150,17 @@ def init_db():
                 except Exception:
                     pass
         if admin_chat_id:
+            # Avval dublikat bo'ladiganlarni o'chiramiz (admin allaqachon kuzatayotganlar)
             con.execute(
-                "UPDATE tracked_products SET user_id=? WHERE user_id=0",
+                """DELETE FROM tracked_products WHERE user_id=0
+                   AND product_id IN (
+                       SELECT product_id FROM tracked_products WHERE user_id=?
+                   )""",
+                (admin_chat_id,),
+            )
+            # Qolganlarni admin ga ko'chiramiz
+            con.execute(
+                "UPDATE OR IGNORE tracked_products SET user_id=? WHERE user_id=0",
                 (admin_chat_id,),
             )
             con.commit()
