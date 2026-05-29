@@ -441,9 +441,16 @@ def upload_session():
     secret = os.environ.get("TOKEN_UPDATE_SECRET", "")
     if not secret or request.args.get("secret") != secret:
         return jsonify({"error": "Ruxsat yo'q"}), 403
-    data = request.get_data()
+    # multipart (-F) yoki raw body (-data-binary) ikkisini ham qabul qilish
+    f = request.files.get("file")
+    data = f.read() if f else request.get_data()
     if len(data) < 100:
         return jsonify({"error": "Fayl bo'sh yoki juda kichik"}), 400
+    # JSON tekshirish
+    try:
+        json.loads(data)
+    except Exception:
+        return jsonify({"error": "Yuborilgan fayl to'g'ri JSON emas"}), 400
     session_path = DATA_DIR / "uzum_session.json"
     session_path.write_bytes(data)
     return jsonify({"ok": True, "size": len(data), "path": str(session_path)})
