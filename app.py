@@ -2,6 +2,7 @@
 import json
 import os
 import sqlite3
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -807,10 +808,11 @@ def untrack(pid):
     return jsonify({"ok": True})
 
 
-def refresh_all_tracked(fetch_weekly=True):
+def refresh_all_tracked(fetch_weekly=True, progress_cb=None):
     """Barcha kuzatilayotgan mahsulotlarni Uzum API dan yangilaydi.
 
     fetch_weekly=True bo'lsa, "Bu hafta X kishi" ma'lumotini ham Playwright orqali oladi.
+    progress_cb(done, total) — haftalik scraping jarayonida chaqiriladi.
     """
     con = sqlite3.connect(DB_PATH)
     ids = [r[0] for r in con.execute("SELECT DISTINCT product_id FROM tracked_products").fetchall()]
@@ -835,7 +837,7 @@ def refresh_all_tracked(fetch_weekly=True):
         try:
             from weekly_scraper import fetch_weekly_parallel
             print(f"📊 Haftalik ma'lumot yuklanmoqda ({len(ids)} ta, 3 parallel)...")
-            weekly_data = fetch_weekly_parallel(ids, workers=3, delay=0.3)
+            weekly_data = fetch_weekly_parallel(ids, workers=3, delay=0.3, progress_cb=progress_cb)
             now = datetime.utcnow().isoformat()
             con = sqlite3.connect(DB_PATH)
             for pid, count in weekly_data.items():
@@ -872,10 +874,58 @@ def refresh_all_tracked(fetch_weekly=True):
     return refreshed
 
 
+# Jonli yangilash holati (refresh tugmasi uchun)
+_refresh_state = {
+    "running": False,
+    "done": 0,
+    "total": 0,
+    "phase": "",        # "products" | "weekly" | "done"
+    "started_at": 0,
+    "finished_at": 0,
+}
+_refresh_lock = threading.Lock()
+
+
+def _run_live_refresh():
+    """Background thread: mahsulot + haftalik ma'lumotni jonli yangilaydi."""
+    try:
+        con = sqlite3.connect(DB_PATH)
+        total = con.execute("SELECT COUNT(DISTINCT product_id) FROM tracked_products").fetchone()[0]
+        con.close()
+        _refresh_state.update({"total": total or 0, "done": 0, "phase": "weekly"})
+
+        def cb(done, tot):
+            _refresh_state["done"] = done
+            _refresh_state["total"] = tot
+
+        refresh_all_tracked(fetch_weekly=True, progress_cb=cb)
+    except Exception as e:
+        print(f"⚠️ Live refresh xato: {e}")
+    finally:
+        _refresh_state.update({
+            "running": False,
+            "phase": "done",
+            "finished_at": time.time(),
+        })
+
+
 @app.route("/api/refresh", methods=["POST"])
 def refresh_endpoint():
-    n = refresh_all_tracked()
-    return jsonify({"refreshed": n})
+    """Jonli yangilashni boshlaydi (background). Holat /api/refresh-status dan."""
+    with _refresh_lock:
+        if _refresh_state["running"]:
+            return jsonify({"started": False, **_refresh_state})
+        _refresh_state.update({
+            "running": True, "done": 0, "total": 0,
+            "phase": "products", "started_at": time.time(), "finished_at": 0,
+        })
+    threading.Thread(target=_run_live_refresh, daemon=True).start()
+    return jsonify({"started": True, **_refresh_state})
+
+
+@app.route("/api/refresh-status")
+def refresh_status_endpoint():
+    return jsonify(dict(_refresh_state))
 
 
 def get_color_sales_delta(pid, days=7):
@@ -1132,7 +1182,7 @@ def start_background_refresher():
                 if cycle % 24 == 0:
                     _check_session_health()
 
-                fetch_weekly = (cycle % 6 == 0)  # har 6 soatda bir marta
+                fetch_weekly = (cycle % 3 == 0)  # har 3 soatda bir marta
                 refresh_all_tracked(fetch_weekly=fetch_weekly)
             except Exception as e:
                 print(f"Background refresh error: {e}")
