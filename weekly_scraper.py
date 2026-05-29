@@ -125,7 +125,7 @@ def _fetch_chunk(pids, delay=0.3):
                     html = page.content()
                     m = WEEKLY_RE.search(html)
                     results[pid] = int(m.group(1)) if m else None  # None = banner topilmadi
-                    print(f"[weekly-par] {pid}: {results[pid]}")
+                    print(f"[weekly-par] {pid}: {results[pid]} (html={len(html)}b)")
                     time.sleep(delay)
                 except Exception as e:
                     print(f"[weekly-par] {pid}: {e}")
