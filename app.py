@@ -928,6 +928,17 @@ def refresh_status_endpoint():
     return jsonify(dict(_refresh_state))
 
 
+@app.route("/api/debug-weekly")
+def debug_weekly():
+    """DB dagi weekly_buyers ni ko'rish uchun (vaqtinchalik debug)."""
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute(
+        "SELECT product_id, weekly_buyers, weekly_updated_at FROM tracked_products ORDER BY weekly_buyers DESC NULLS LAST LIMIT 20"
+    ).fetchall()
+    con.close()
+    return jsonify([{"pid": r[0], "weekly": r[1], "updated": r[2]} for r in rows])
+
+
 def get_color_sales_delta(pid, days=7):
     """Snapshot delta asosida rang bo'yicha aniq sotuvni hisoblaydi.
 
