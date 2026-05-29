@@ -47,7 +47,7 @@ def fetch_weekly_buyers(pid, timeout_ms=12000):
                 page.wait_for_timeout(2500)
                 html = page.content()
                 m = WEEKLY_RE.search(html)
-                return int(m.group(1)) if m else 0
+                return int(m.group(1)) if m else None  # None = banner topilmadi, eski raqamni saqlash
             except Exception as e:
                 print(f"[weekly] {pid}: {e}")
                 return None
@@ -87,7 +87,7 @@ def fetch_weekly_batch(pids, delay=0.5):
                         page.wait_for_timeout(2000)
                         html = page.content()
                         m = WEEKLY_RE.search(html)
-                        results[pid] = int(m.group(1)) if m else 0
+                        results[pid] = int(m.group(1)) if m else None  # None = eski raqamni saqlash
                         time.sleep(delay)
                     except Exception as e:
                         print(f"[weekly] {pid}: {e}")

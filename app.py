@@ -841,14 +841,14 @@ def refresh_all_tracked(fetch_weekly=True, progress_cb=None):
             now = datetime.utcnow().isoformat()
             con = sqlite3.connect(DB_PATH)
             for pid, count in weekly_data.items():
-                if count is not None:
+                if count is not None and count > 0:  # 0 va None eski raqamni o'chirmasin
                     con.execute(
                         "UPDATE tracked_products SET weekly_buyers=?, weekly_updated_at=? WHERE product_id=?",
                         (count, now, pid),
                     )
             con.commit()
             con.close()
-            ok = sum(1 for v in weekly_data.values() if v is not None)
+            ok = sum(1 for v in weekly_data.values() if v is not None and v > 0)
             total = len(ids)
             print(f"✅ Haftalik yangilandi: {ok}/{total}")
             # Agar ko'pchiligi muvaffaqiyatsiz bo'lsa — sessiya muammosi
