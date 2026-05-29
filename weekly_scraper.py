@@ -120,11 +120,12 @@ def _fetch_chunk(pids, delay=0.3):
             for pid in pids:
                 try:
                     page.goto(f"https://uzum.uz/ru/product/p-{pid}",
-                              wait_until="domcontentloaded", timeout=12000)
-                    page.wait_for_timeout(1800)
+                              wait_until="domcontentloaded", timeout=25000)
+                    page.wait_for_timeout(3000)
                     html = page.content()
                     m = WEEKLY_RE.search(html)
-                    results[pid] = int(m.group(1)) if m else 0
+                    results[pid] = int(m.group(1)) if m else None  # None = banner topilmadi
+                    print(f"[weekly-par] {pid}: {results[pid]}")
                     time.sleep(delay)
                 except Exception as e:
                     print(f"[weekly-par] {pid}: {e}")
@@ -134,7 +135,7 @@ def _fetch_chunk(pids, delay=0.3):
     return results
 
 
-def fetch_weekly_parallel(pids, workers=3, delay=0.3, progress_cb=None):
+def fetch_weekly_parallel(pids, workers=2, delay=0.5, progress_cb=None):
     """Bir nechta brauzerlarni parallel ishga tushiradi (~3x tezroq).
 
     progress_cb(done, total) — har worker o'z chunk'ini tugatganda chaqiriladi.
