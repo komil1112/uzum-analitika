@@ -334,6 +334,71 @@ def notify_token_expired():
         pass
 
 
+def _notify_session_warning(msg: str, cooldown_hours: int = 24):
+    """Sessiya muammosi haqida admin ga xabar (kuniga 1 marta)."""
+    try:
+        cfg_file = DATA_DIR / "bot_settings.json"
+        if not cfg_file.exists():
+            return
+        cfg = json.loads(cfg_file.read_text())
+        chat_id = cfg.get("admin_chat_id")
+        bot_token = os.environ.get("BOT_TOKEN", "")
+        if not chat_id or not bot_token:
+            return
+        # Spam oldini olish — har cooldown_hours soatda 1 marta
+        last = cfg.get("last_session_warning", 0)
+        if time.time() - last < cooldown_hours * 3600:
+            return
+        cfg["last_session_warning"] = time.time()
+        cfg_file.write_text(json.dumps(cfg, indent=2))
+        markup = {
+            "inline_keyboard": [[
+                {"text": "🔐 Login qilish", "callback_data": "do_login"}
+            ]]
+        }
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown", "reply_markup": markup},
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def _check_session_health():
+    """Sessiya fayli yoshini tekshiradi — eskirsa ogohlantiradi."""
+    session_file = DATA_DIR / "uzum_session.json"
+    if not session_file.exists():
+        _notify_session_warning(
+            "❌ *Uzum sessiyasi topilmadi!*\n\n"
+            "Haftalik xaridorlar ma'lumoti olinmayapti.\n\n"
+            "👇 Qayta login qiling:\n/login — SMS orqali",
+            cooldown_hours=24,
+        )
+        return
+    age_days = (time.time() - session_file.stat().st_mtime) / 86400
+    if age_days > 390:
+        _notify_session_warning(
+            f"❌ *Uzum sessiyasi eskirdi!*\n\n"
+            f"Sessiya {int(age_days)} kun oldin yangilangan.\n"
+            "Haftalik ma'lumotlar olinmayapti.\n\n"
+            "👇 Qayta login qiling:\n/login — SMS orqali",
+            cooldown_hours=24,
+        )
+    elif age_days > 350:
+        _notify_session_warning(
+            f"⏳ *Uzum sessiyasi tez eskiradi!*\n\n"
+            f"Sessiya {int(age_days)} kun oldin yangilangan "
+            f"(~{int(398 - age_days)} kun qoldi).\n\n"
+            "Hozircha hammasi ishlayapti, lekin tez orada "
+            "login tavsiya qilinadi.\n\n"
+            "👇 Yangilash uchun:\n/login — SMS orqali",
+            cooldown_hours=72,  # 3 kunda 1 marta
+        )
+    else:
+        print(f"✅ Sessiya sog'lom: {int(age_days)} kun eski, ~{int(398 - age_days)} kun qoldi")
+
+
 def store_snapshot(p):
     if not p:
         return
@@ -782,7 +847,25 @@ def refresh_all_tracked(fetch_weekly=True):
             con.commit()
             con.close()
             ok = sum(1 for v in weekly_data.values() if v is not None)
-            print(f"✅ Haftalik yangilandi: {ok}/{len(ids)}")
+            total = len(ids)
+            print(f"✅ Haftalik yangilandi: {ok}/{total}")
+            # Agar ko'pchiligi muvaffaqiyatsiz bo'lsa — sessiya muammosi
+            if total >= 3 and ok == 0:
+                _notify_session_warning(
+                    "⚠️ *Haftalik ma'lumotlar olinmadi!*\n\n"
+                    f"0/{total} ta mahsulot uchun scraping ishlamadi.\n"
+                    "Sessiya muammosi bo'lishi mumkin.\n\n"
+                    "👇 Tekshirish uchun:\n/login — SMS orqali",
+                    cooldown_hours=24,
+                )
+            elif total >= 5 and ok < total * 0.3:
+                _notify_session_warning(
+                    f"⚠️ *Haftalik ma'lumotlarda muammo!*\n\n"
+                    f"Faqat {ok}/{total} ta mahsulot olindi.\n"
+                    "Sessiya muammosi bo'lishi mumkin.\n\n"
+                    "👇 Tekshirish uchun:\n/login — SMS orqali",
+                    cooldown_hours=24,
+                )
         except Exception as e:
             print(f"⚠️ Haftalik yangilash xato: {e}")
 
@@ -1045,13 +1128,9 @@ def start_background_refresher():
         cycle = 0
         while True:
             try:
-                # Token 1 soatdan kam qolganda yangilash
-                if _is_token_expiring_soon(threshold_minutes=70):
-                    print("⏳ Token tez eskiradi — avtomatik yangilanmoqda...")
-                    success = try_auto_refresh_token()
-                    if not success:
-                        print("⚠️ Token yangilanmadi — notify_token_expired chaqirilmoqda")
-                        notify_token_expired()
+                # Sessiya fayli yoshini kuniga 1 marta tekshiramiz (24-soatlik cycle)
+                if cycle % 24 == 0:
+                    _check_session_health()
 
                 fetch_weekly = (cycle % 6 == 0)  # har 6 soatda bir marta
                 refresh_all_tracked(fetch_weekly=fetch_weekly)
@@ -1062,7 +1141,7 @@ def start_background_refresher():
 
     t = threading.Thread(target=loop, daemon=True)
     t.start()
-    print("⏰ Background: snapshot har 1 soat, haftalik har 6 soat, token auto-refresh yoqilgan")
+    print("⏰ Background: snapshot har 1 soat, haftalik har 6 soat, sessiya monitoringi yoqilgan")
 
 
 
