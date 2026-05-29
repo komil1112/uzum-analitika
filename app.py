@@ -886,19 +886,12 @@ _refresh_state = {
 _refresh_lock = threading.Lock()
 
 
-def _run_live_refresh():
-    """Background thread: mahsulot + haftalik ma'lumotni jonli yangilaydi."""
+def _run_live_refresh(fetch_weekly=False):
+    """Background thread: mahsulot ma'lumotini yangilaydi (stock, orders).
+    fetch_weekly=True faqat background avtomatik chaqiruvda ishlatiladi.
+    """
     try:
-        con = sqlite3.connect(DB_PATH)
-        total = con.execute("SELECT COUNT(DISTINCT product_id) FROM tracked_products").fetchone()[0]
-        con.close()
-        _refresh_state.update({"total": total or 0, "done": 0, "phase": "weekly"})
-
-        def cb(done, tot):
-            _refresh_state["done"] = done
-            _refresh_state["total"] = tot
-
-        refresh_all_tracked(fetch_weekly=True, progress_cb=cb)
+        refresh_all_tracked(fetch_weekly=fetch_weekly)
     except Exception as e:
         print(f"⚠️ Live refresh xato: {e}")
     finally:
@@ -911,7 +904,10 @@ def _run_live_refresh():
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_endpoint():
-    """Jonli yangilashni boshlaydi (background). Holat /api/refresh-status dan."""
+    """Tezkor yangilash: stock/orders yangilanadi, haftalik scraping EMAS.
+    weekly=1 parametri bilan haftalik scraping ham qo'shiladi (faqat background uchun).
+    """
+    fetch_weekly = request.args.get("weekly", "0") == "1"
     with _refresh_lock:
         if _refresh_state["running"]:
             return jsonify({"started": False, **_refresh_state})
@@ -919,7 +915,7 @@ def refresh_endpoint():
             "running": True, "done": 0, "total": 0,
             "phase": "products", "started_at": time.time(), "finished_at": 0,
         })
-    threading.Thread(target=_run_live_refresh, daemon=True).start()
+    threading.Thread(target=_run_live_refresh, args=(fetch_weekly,), daemon=True).start()
     return jsonify({"started": True, **_refresh_state})
 
 
@@ -1193,7 +1189,7 @@ def start_background_refresher():
                 if cycle % 24 == 0:
                     _check_session_health()
 
-                fetch_weekly = (cycle % 3 == 0)  # har 3 soatda bir marta
+                fetch_weekly = (cycle % 6 == 0)  # har 6 soatda bir marta
                 refresh_all_tracked(fetch_weekly=fetch_weekly)
             except Exception as e:
                 print(f"Background refresh error: {e}")

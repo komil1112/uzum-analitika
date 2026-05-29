@@ -711,28 +711,12 @@ const tracking = {
     var btn = document.getElementById('refBtn');
     if (btn) btn.style.animation = 'spin 0.65s linear infinite';
     try {
-      // Jonli yangilashni boshlaymiz (mahsulot + haftalik scraping)
-      var start = await fetch('/api/refresh', { method: 'POST' }).then(function(r){ return r.json(); });
-      showToast('⏳ Jonli ma\'lumot olinmoqda...');
-
-      // Holatni kuzatib turamiz (har 2s)
-      var finished = false;
-      for (var i = 0; i < 60 && !finished; i++) {  // maks ~120s
-        await new Promise(function(res){ setTimeout(res, 2000); });
-        try {
-          var st = await fetch('/api/refresh-status').then(function(r){ return r.json(); });
-          if (st.total > 0 && st.phase === 'weekly') {
-            showToast('⏳ Haftalik: ' + st.done + '/' + st.total);
-          }
-          if (!st.running) { finished = true; }
-        } catch (e) { /* poll xatosi — davom etamiz */ }
-      }
-    } catch (e) {
-      // refresh boshlanmasa — hech bo'lmasa cache'ni qayta yuklaymiz
-    }
+      // Faqat API ma'lumotlarini yangilaymiz (stock, orders) — haftalik scraping emas
+      await fetch('/api/refresh?weekly=0', { method: 'POST' });
+    } catch (e) { /* xato bo'lsa ham yuklaymiz */ }
     await this.load();
     if (btn) btn.style.animation = '';
-    showToast('✓ Jonli yangilandi');
+    showToast('✓ Yangilandi');
   },
 
   render() {
