@@ -43,15 +43,45 @@ def save_settings(data):
     SETTINGS_FILE.write_text(json.dumps(data, indent=2))
 
 
+def _token_is_valid(token: str) -> bool:
+    """JWT eskirmaganmi tekshiradi. Eskirgan/buzuq bo'lsa False."""
+    try:
+        raw = (token or "").strip('"')
+        if not raw or '.' not in raw:
+            return False
+        import base64 as _b64
+        payload_b64 = raw.split('.')[1]
+        pad = 4 - len(payload_b64) % 4
+        if pad != 4:
+            payload_b64 += '=' * pad
+        payload = json.loads(_b64.b64decode(payload_b64))
+        exp = payload.get("exp", 0)
+        # 60s zaxira bilan: hali amal qilsa True
+        return bool(exp) and (time.time() < exp - 60)
+    except Exception:
+        return False
+
+
 def uzum_headers():
+    """Uzum public API uchun header.
+
+    MUHIM: api.uzum.uz/api/v2/product/* — OCHIQ (public) API, token shart emas.
+    Eskirgan/yaroqsiz token yuborilsa API bo'sh javob qaytaradi (buziladi).
+    Shuning uchun token faqat AMAL QILSA qo'shamiz — aks holda Authorization'siz
+    yuboramiz va public ma'lumot baribir keladi. Bu token eskirsa ham kuzatuv
+    to'xtamasligini ta'minlaydi.
+    """
     s = load_settings()
-    return {
+    h = {
         "Accept": "application/json",
         "Accept-Language": "ru-RU",
-        "Authorization": f"Bearer {s['token']}",
         "User-Agent": "UzumMarket/2.5.0",
-        "x-iid": s["xiid"],
+        "x-iid": s.get("xiid", "9499b4e3-636a-416e-8c9a-30ecfae50e55"),
     }
+    token = s.get("token", "")
+    if _token_is_valid(token):
+        h["Authorization"] = f"Bearer {token.strip(chr(34))}"
+    return h
 
 
 # ----- Database (kunlik trekiing uchun) -----
