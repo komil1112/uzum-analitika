@@ -97,9 +97,46 @@ def fetch_weekly_batch(pids, delay=0.5):
     return results
 
 
-def _fetch_chunk(pids, delay=0.3):
+# Captcha/bloklangan sahifa kichik bo'ladi (~15KB), to'liq sahifa ~2MB
+CAPTCHA_HTML_LIMIT = 120000
+
+
+def _scrape_page(page, pid, attempts=3):
+    """Bitta mahsulot raqamini oladi. Captcha bo'lsa qayta uradi.
+
+    Qaytaradi:
+      int  — "Bu hafta X kishi" topildi
+      None — to'liq sahifa yuklandi, lekin banner yo'q (kam sotuv yoki yangi mahsulot)
+             yoki barcha urinishlar captcha qaytardi
+    """
+    for attempt in range(attempts):
+        try:
+            page.goto(f"https://uzum.uz/ru/product/p-{pid}",
+                      wait_until="domcontentloaded", timeout=25000)
+            page.wait_for_timeout(3000)
+            html = page.content()
+            m = WEEKLY_RE.search(html)
+            if m:
+                return int(m.group(1))
+            # Kichik HTML = captcha/bloklash → biroz kutib qayta urinamiz
+            if len(html) < CAPTCHA_HTML_LIMIT and attempt < attempts - 1:
+                print(f"[weekly] {pid}: captcha? ({len(html)}b) urinish {attempt + 1}/{attempts}")
+                page.wait_for_timeout(2500 + attempt * 1500)  # backoff
+                continue
+            # To'liq sahifa, lekin banner yo'q = haqiqatan kam sotuv
+            return None
+        except Exception as e:
+            print(f"[weekly] {pid} urinish {attempt + 1}/{attempts}: {e}")
+            page.wait_for_timeout(2000)
+    return None
+
+
+def _fetch_chunk(pids, delay=0.5, on_done=None):
     """Bitta worker uchun: o'z brauzerini ochib, berilgan ID'larni ketma-ket oladi."""
     if not SESSION_FILE.exists():
+        if on_done:
+            for _ in pids:
+                on_done()
         return {pid: None for pid in pids}
     from playwright.sync_api import sync_playwright
 
@@ -118,27 +155,23 @@ def _fetch_chunk(pids, delay=0.3):
             )
             page = context.new_page()
             for pid in pids:
-                try:
-                    page.goto(f"https://uzum.uz/ru/product/p-{pid}",
-                              wait_until="domcontentloaded", timeout=25000)
-                    page.wait_for_timeout(3000)
-                    html = page.content()
-                    m = WEEKLY_RE.search(html)
-                    results[pid] = int(m.group(1)) if m else None  # None = banner topilmadi
-                    print(f"[weekly-par] {pid}: {results[pid]} (html={len(html)}b)")
-                    time.sleep(delay)
-                except Exception as e:
-                    print(f"[weekly-par] {pid}: {e}")
-                    results[pid] = None
+                results[pid] = _scrape_page(page, pid)
+                print(f"[weekly-par] {pid}: {results[pid]}")
+                if on_done:
+                    try:
+                        on_done()
+                    except Exception:
+                        pass
+                time.sleep(delay)
         finally:
             browser.close()
     return results
 
 
 def fetch_weekly_parallel(pids, workers=2, delay=0.5, progress_cb=None):
-    """Bir nechta brauzerlarni parallel ishga tushiradi (~3x tezroq).
+    """Bir nechta brauzerlarni parallel ishga tushiradi.
 
-    progress_cb(done, total) — har worker o'z chunk'ini tugatganda chaqiriladi.
+    progress_cb(done, total) — har mahsulot tugaganda chaqiriladi (incremental).
     """
     if not SESSION_FILE.exists():
         return {}
@@ -152,21 +185,25 @@ def fetch_weekly_parallel(pids, workers=2, delay=0.5, progress_cb=None):
     chunks = [c for c in chunks if c]
 
     results = {}
-    done = 0
     total = len(pids)
+    done = [0]
+    lock = threading.Lock()
+
+    def on_done():
+        with lock:
+            done[0] += 1
+            d = done[0]
+        if progress_cb:
+            try:
+                progress_cb(d, total)
+            except Exception:
+                pass
 
     with ThreadPoolExecutor(max_workers=len(chunks)) as ex:
-        futures = {ex.submit(_fetch_chunk, chunk, delay): chunk for chunk in chunks}
+        futures = {ex.submit(_fetch_chunk, chunk, delay, on_done): chunk for chunk in chunks}
         for fut in as_completed(futures):
             try:
-                res = fut.result()
-                results.update(res)
-                done += len(res)
-                if progress_cb:
-                    try:
-                        progress_cb(done, total)
-                    except Exception:
-                        pass
+                results.update(fut.result())
             except Exception as e:
                 print(f"[weekly-par] chunk xato: {e}")
     return results

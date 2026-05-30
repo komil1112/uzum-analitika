@@ -711,8 +711,22 @@ const tracking = {
     var btn = document.getElementById('refBtn');
     if (btn) btn.style.animation = 'spin 0.65s linear infinite';
     try {
-      // Faqat API ma'lumotlarini yangilaymiz (stock, orders) — haftalik scraping emas
-      await fetch('/api/refresh?weekly=0', { method: 'POST' });
+      // To'liq yangilash: stock/orders + "Bu hafta X kishi" (Playwright scraping)
+      await fetch('/api/refresh?weekly=1', { method: 'POST' });
+      showToast('⏳ Haftalik ma\'lumot yangilanmoqda...');
+
+      // Holatni kuzatamiz (har 3s, maks ~180s)
+      var finished = false;
+      for (var i = 0; i < 60 && !finished; i++) {
+        await new Promise(function(res){ setTimeout(res, 3000); });
+        try {
+          var st = await fetch('/api/refresh-status').then(function(r){ return r.json(); });
+          if (st.total > 0 && st.phase === 'weekly') {
+            showToast('⏳ Haftalik: ' + st.done + '/' + st.total);
+          }
+          if (!st.running && st.phase === 'done') { finished = true; }
+        } catch (e) { /* poll xatosi — davom */ }
+      }
     } catch (e) { /* xato bo'lsa ham yuklaymiz */ }
     await this.load();
     if (btn) btn.style.animation = '';

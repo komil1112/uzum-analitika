@@ -843,8 +843,8 @@ def refresh_all_tracked(fetch_weekly=True, progress_cb=None):
     if fetch_weekly and ids:
         try:
             from weekly_scraper import fetch_weekly_parallel
-            print(f"📊 Haftalik ma'lumot yuklanmoqda ({len(ids)} ta, 3 parallel)...")
-            weekly_data = fetch_weekly_parallel(ids, workers=3, delay=0.3, progress_cb=progress_cb)
+            print(f"📊 Haftalik ma'lumot yuklanmoqda ({len(ids)} ta, 2 parallel + retry)...")
+            weekly_data = fetch_weekly_parallel(ids, workers=2, delay=0.5, progress_cb=progress_cb)
             now = datetime.utcnow().isoformat()
             con = sqlite3.connect(DB_PATH)
             for pid, count in weekly_data.items():
@@ -895,10 +895,21 @@ _refresh_lock = threading.Lock()
 
 def _run_live_refresh(fetch_weekly=False):
     """Background thread: mahsulot ma'lumotini yangilaydi (stock, orders).
-    fetch_weekly=True faqat background avtomatik chaqiruvda ishlatiladi.
+    fetch_weekly=True bo'lsa "Bu hafta X kishi" ham Playwright orqali yangilanadi.
     """
     try:
-        refresh_all_tracked(fetch_weekly=fetch_weekly)
+        if fetch_weekly:
+            con = sqlite3.connect(DB_PATH)
+            total = con.execute("SELECT COUNT(DISTINCT product_id) FROM tracked_products").fetchone()[0]
+            con.close()
+            _refresh_state.update({"phase": "weekly", "total": total or 0, "done": 0})
+
+        def cb(done, tot):
+            _refresh_state["done"] = done
+            _refresh_state["total"] = tot
+            _refresh_state["phase"] = "weekly"
+
+        refresh_all_tracked(fetch_weekly=fetch_weekly, progress_cb=cb)
     except Exception as e:
         print(f"⚠️ Live refresh xato: {e}")
     finally:
@@ -911,10 +922,11 @@ def _run_live_refresh(fetch_weekly=False):
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_endpoint():
-    """Tezkor yangilash: stock/orders yangilanadi, haftalik scraping EMAS.
-    weekly=1 parametri bilan haftalik scraping ham qo'shiladi (faqat background uchun).
+    """Yangilashni boshlaydi (background). Holat /api/refresh-status dan.
+    weekly=1 (default) — "Bu hafta X kishi" ham scraping qilinadi.
+    weekly=0 — faqat stock/orders (tezkor).
     """
-    fetch_weekly = request.args.get("weekly", "0") == "1"
+    fetch_weekly = request.args.get("weekly", "1") == "1"
     with _refresh_lock:
         if _refresh_state["running"]:
             return jsonify({"started": False, **_refresh_state})
