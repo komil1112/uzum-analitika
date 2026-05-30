@@ -954,6 +954,31 @@ def debug_weekly():
     return jsonify([{"pid": r[0], "weekly": r[1], "updated": r[2]} for r in rows])
 
 
+@app.route("/api/debug-snapshots/<int:pid>")
+def debug_snapshots(pid):
+    """Mahsulot snapshot tarixini ko'rsatadi (vaqtinchalik debug)."""
+    con = sqlite3.connect(DB_PATH)
+    # Snapshot tarixi chuqurligi
+    span = con.execute(
+        "SELECT MIN(taken_at), MAX(taken_at), COUNT(DISTINCT taken_at) FROM snapshots WHERE product_id=?",
+        (pid,),
+    ).fetchone()
+    # total_stock vaqt seriyasi (distinct taken_at)
+    series = con.execute(
+        "SELECT taken_at, MIN(total_stock) FROM snapshots WHERE product_id=? "
+        "GROUP BY taken_at ORDER BY taken_at ASC",
+        (pid,),
+    ).fetchall()
+    con.close()
+    return jsonify({
+        "pid": pid,
+        "first_snapshot": span[0],
+        "last_snapshot": span[1],
+        "distinct_snapshots": span[2],
+        "stock_series": [{"t": r[0], "stock": r[1]} for r in series],
+    })
+
+
 def get_color_sales_delta(pid, days=7):
     """Snapshot delta asosida rang bo'yicha aniq sotuvni hisoblaydi.
 
