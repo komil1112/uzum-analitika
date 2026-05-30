@@ -811,8 +811,13 @@ const tracking = {
       '</div>' +
       '<div class="pc-stats">' +
         '<div class="stat-cell"><div class="stat-lbl">Bugun</div><div class="stat-val' + todayCls + '">' + fmtStat(p.today) + '</div></div>' +
-        '<div class="stat-cell"><div class="stat-lbl">7 kun</div><div class="stat-val' + week7Cls + '">' + fmtStat(p.last7d) + '</div></div>' +
-        '<div class="stat-cell"><div class="stat-lbl">30 kun</div><div class="stat-val">' + fmtStat(p.last30d) + '</div></div>' +
+        (function() {
+          var dataDays = p.addedAt ? Math.floor((Date.now() - Date.parse(p.addedAt.endsWith('Z')||p.addedAt.indexOf('+')>-1 ? p.addedAt : p.addedAt+'Z')) / 86400000) : 99;
+          var lbl7  = dataDays < 7  ? (dataDays + ' kun') : '7 kun';
+          var lbl30 = dataDays < 30 ? (dataDays + ' kun') : '30 kun';
+          return '<div class="stat-cell"><div class="stat-lbl">' + lbl7 + '</div><div class="stat-val' + week7Cls + '">' + fmtStat(p.last7d) + '</div></div>' +
+                 '<div class="stat-cell"><div class="stat-lbl">' + lbl30 + '</div><div class="stat-val">' + fmtStat(p.last30d) + '</div></div>';
+        })() +
         '<div class="stat-cell"><div class="stat-lbl">Qoldiq</div><div class="stat-val ' + stockCls + '">' + fmt(p.stockNow) + '</div></div>' +
       '</div>' +
     '</div>';
